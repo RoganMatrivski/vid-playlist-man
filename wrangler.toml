@@ -14,7 +14,7 @@ port = 8800
 local_protocol = "http"
 
 [triggers]
-crons = ["*/5 * * * *"] # “At every 5th minute.” -crontab.guru
+crons = ["*/30 * * * *"] # “At every 5th minute.” -crontab.guru
 
 [[kv_namespaces]]
 binding = "VID_PLAYLIST_MANAGER_KV"
