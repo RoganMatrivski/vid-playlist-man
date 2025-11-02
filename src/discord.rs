@@ -348,14 +348,6 @@ mod utils {
     }
 }
 
-#[allow(dead_code)]
-struct DiscordUrlResult {
-    url: String,
-    server: String,
-    channel: String,
-    // attc_json: String,
-}
-
 const EXCLUDED_PATTERNS: &[&str] = &[
     "cdn.",
     "tenor.",
@@ -387,7 +379,7 @@ pub async fn mainfn(env: &worker::Env) -> Result<()> {
     let excluder = aho_corasick::AhoCorasick::builder()
         .ascii_case_insensitive(true)
         .build(EXCLUDED_PATTERNS)?;
-    let mut msgs = vec![];
+    let mut urls = vec![];
 
     for ch_id in channels {
         let ch = client.get_channel(ch_id).await?;
@@ -401,10 +393,15 @@ pub async fn mainfn(env: &worker::Env) -> Result<()> {
             .get_messages_range(ch_id, range.clone(), None)
             .await?;
 
-        let links = msg_res
-            .iter()
-            .flat_map(|x| finder.links(&x.content))
-            .map(|x| x.as_str())
+        let mut links = msg_res
+            .into_iter()
+            .map(|x| x.content)
+            .flat_map(|x| {
+                finder
+                    .links(&x)
+                    .map(|x| x.as_str().to_string())
+                    .collect_vec()
+            })
             .filter(|x| excluder.is_match(x))
             .collect::<Vec<_>>();
 
@@ -417,19 +414,10 @@ pub async fn mainfn(env: &worker::Env) -> Result<()> {
             }
         );
 
-        for linkstr in links {
-            msgs.push(DiscordUrlResult {
-                url: linkstr.to_string(),
-                channel: chname.clone(),
-                server: srvname.clone(),
-            })
-        }
-
-        // TODO: Add individual server upload here
-        // TODO: Remove DiscordUrlResult, straight push linkstr
+        urls.append(&mut links);
     }
 
-    if msgs.is_empty() {
+    if urls.is_empty() {
         let emfmt = time::format_description::parse("[hour]:[minute]:[second]")?;
         let emtime = prevtime.format(&emfmt)?;
         console_log!("No new links since {emtime}. Skipping sending to KV.")
@@ -447,7 +435,7 @@ pub async fn mainfn(env: &worker::Env) -> Result<()> {
     // let metadata = format!("// METADATA: {{\"created_at\":\"{}\"}}\n\n", currtime);
 
     let kvname = format!("{timestr}_discord_merged");
-    let kvvalue = &msgs.into_iter().map(|x| x.url).join("\n");
+    let kvvalue = &urls.join("\n");
 
     // kv.put(&kvname, kvvalue)
     //     .expect("Failed prepping KV send")
