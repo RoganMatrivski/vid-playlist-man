@@ -365,7 +365,7 @@ const EXCLUDED_PATTERNS: &[&str] = &[
 
 // TODO: New strat. Make this run each hour or less, store in temp_[yyyyMM]_*
 // TODO: Each month, process raw urls and concat.
-pub async fn mainfn(env: &worker::Env) -> Result<()> {
+pub async fn mainfn(env: &worker::Env, sched_diff: i64) -> Result<()> {
     let token = env.secret("DISCORD_TOKEN")?;
     let channels = env.secret("DISCORD_CHANNEL_IDS")?.to_string();
     let channels = channels.split(",").collect::<Vec<_>>();
@@ -375,7 +375,7 @@ pub async fn mainfn(env: &worker::Env) -> Result<()> {
     let client = DiscordClient::new(token.to_string());
 
     let currtime = time::UtcDateTime::now();
-    let prevtime = currtime.saturating_sub(time::Duration::minutes(5));
+    let prevtime = currtime.saturating_sub(time::Duration::minutes(sched_diff));
 
     {
         let timefmt = time::format_description::parse("[hour]:[minute]:[second]")?;

@@ -23,3 +23,5 @@ web-time = "1.1.0"
 linkify = "0.10.0"
 aho-corasick = "1.1.4"
 itertools = "0.14.0"
+croner = "3.0.1"
+chrono = { version = "0.4.42", default-features = false, features = ["wasm-bindgen"] }
