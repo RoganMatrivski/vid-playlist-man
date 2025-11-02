@@ -377,26 +377,12 @@ pub async fn mainfn(env: &worker::Env) -> Result<()> {
     let client = DiscordClient::new(token.to_string());
 
     let currtime = time::UtcDateTime::now();
+    let prevtime = currtime.saturating_sub(time::Duration::minutes(5));
 
-    let curryear = currtime.year();
-    let currmonth = currtime.month();
-    let (prevyear, prevmonth) = if currmonth == time::Month::January {
-        (currtime.year() - 1, time::Month::December)
-    } else {
-        (currtime.year(), currmonth.previous())
-    };
-
-    let curryearmonth = time::Date::from_calendar_date(curryear, currmonth, 1)?
-        .with_time(time::Time::MIDNIGHT)
-        .as_utc();
-    let prevyearmonth = time::Date::from_calendar_date(prevyear, prevmonth, 1)?
-        .with_time(time::Time::MIDNIGHT)
-        .as_utc();
-
-    let range = prevyearmonth..curryearmonth;
+    let range = prevtime..currtime;
     console_log!("{range:?}");
 
-    let mut finder = linkify::LinkFinder::new();
+    let finder = linkify::LinkFinder::new();
     // finder.url_must_have_scheme(false);
     let excluder = aho_corasick::AhoCorasick::builder()
         .ascii_case_insensitive(true)
@@ -439,25 +425,27 @@ pub async fn mainfn(env: &worker::Env) -> Result<()> {
         // TODO: Remove DiscordUrlResult, straight push linkstr
     }
 
-    let msgs = msgs
-        .iter()
-        .sorted_by_key(|x| x.url.clone())
-        .dedup_by(|a, b| a.url == b.url)
-        .collect::<Vec<_>>();
+    // let msgs = msgs
+    //     .iter()
+    //     .sorted_by_key(|x| x.url.clone())
+    //     .dedup_by(|a, b| a.url == b.url)
+    //     .collect::<Vec<_>>();
 
     let timefmt = time::format_description::parse("[year]-[month]")?;
-    let timestr = prevyearmonth.format(&timefmt)?;
+    let timestr = prevtime.format(&timefmt)?;
 
-    let metadata = format!("// METADATA: {{\"created_at\":\"{}\"}}\n\n", currtime);
+    // let metadata = format!("// METADATA: {{\"created_at\":\"{}\"}}\n\n", currtime);
 
     let kvname = format!("{timestr}_discord_merged");
-    let kvvalue = metadata + &msgs.into_iter().map(|x| &x.url).join("\n");
+    let kvvalue = &msgs.into_iter().map(|x| x.url).join("\n");
 
-    kv.put(&kvname, kvvalue)
-        .expect("Failed prepping KV send")
-        .execute()
-        .await
-        .expect("Failed sending KV");
+    // kv.put(&kvname, kvvalue)
+    //     .expect("Failed prepping KV send")
+    //     .execute()
+    //     .await
+    //     .expect("Failed sending KV");
+
+    crate::cf_utils::kv_append(&kv, &kvname, &kvvalue).await?;
 
     Ok(())
 }

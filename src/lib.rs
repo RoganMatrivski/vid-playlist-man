@@ -1,12 +1,13 @@
 use worker::*;
 
+mod cf_utils;
 mod discord;
 
 #[event(fetch)]
-pub async fn main(req: Request, env: Env, _ctx: worker::Context) -> Result<Response> {
+pub async fn main(_req: Request, env: Env, _ctx: worker::Context) -> Result<Response> {
     tracing_worker::init(&env);
 
-    Response::ok("OK")
+    Response::ok("")
 }
 
 #[event(scheduled)]
