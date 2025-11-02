@@ -371,6 +371,12 @@ pub async fn mainfn(env: &worker::Env) -> Result<()> {
     let currtime = time::UtcDateTime::now();
     let prevtime = currtime.saturating_sub(time::Duration::minutes(5));
 
+    {
+        let timefmt = time::format_description::parse("[hour]:[minute]:[second]")?;
+        let timestr = currtime.format(&timefmt)?;
+        console_log!("It is currently {timestr}");
+    }
+
     let range = prevtime..currtime;
     console_log!("{range:?}");
 
@@ -393,6 +399,8 @@ pub async fn mainfn(env: &worker::Env) -> Result<()> {
             .get_messages_range(ch_id, range.clone(), None)
             .await?;
 
+        let msgcount = msg_res.len();
+
         let mut links = msg_res
             .into_iter()
             .map(|x| x.content)
@@ -406,9 +414,14 @@ pub async fn mainfn(env: &worker::Env) -> Result<()> {
             .collect::<Vec<_>>();
 
         console_log!(
-            "Fetched from {chname} ({srvname}): {} new links",
-            if links.is_empty() {
+            "Fetched from {chname} ({srvname}): {} new message, {} new links",
+            if msgcount == 0 {
                 "No"
+            } else {
+                &msgcount.to_string()
+            },
+            if links.is_empty() {
+                "no"
             } else {
                 &links.len().to_string()
             }
