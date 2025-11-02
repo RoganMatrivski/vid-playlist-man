@@ -406,8 +406,7 @@ pub async fn mainfn(env: &worker::Env, sched_diff: i64) -> Result<()> {
             .await?;
 
         if let Some(m) = msg_res.first() {
-            let mut snip = m.content.clone();
-            snip.truncate(50); // truncate IS mutate?! C'mon dude
+            let snip = m.content.clone();
             let t_str = m
                 .timestamp()?
                 .format(&time::format_description::well_known::Rfc3339)?;
@@ -426,7 +425,7 @@ pub async fn mainfn(env: &worker::Env, sched_diff: i64) -> Result<()> {
                     .map(|x| x.as_str().to_string())
                     .collect_vec()
             })
-            .filter(|x| excluder.is_match(x))
+            .filter(|x| !excluder.is_match(x))
             .collect::<Vec<_>>();
 
         console_log!(
