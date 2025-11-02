@@ -401,28 +401,38 @@ pub async fn mainfn(env: &worker::Env) -> Result<()> {
             .get_messages_range(ch_id, range.clone(), None)
             .await?;
 
-        for msg in msg_res {
-            for link in finder.links(&msg.content) {
-                let linkstr = link.as_str();
+        let links = msg_res
+            .iter()
+            .flat_map(|x| finder.links(&x.content))
+            .map(|x| x.as_str())
+            .filter(|x| excluder.is_match(x))
+            .collect::<Vec<_>>();
 
-                if excluder.is_match(linkstr) {
-                    continue;
-                }
-
-                // console_log!("URL: {linkstr}");
-
-                msgs.push(DiscordUrlResult {
-                    url: linkstr.to_string(),
-                    channel: chname.clone(),
-                    server: srvname.clone(),
-                })
+        console_log!(
+            "Fetched from {chname} ({srvname}): {} new links",
+            if links.is_empty() {
+                "No"
+            } else {
+                &links.len().to_string()
             }
-        }
+        );
 
-        console_log!("Fetched from {chname} ({srvname})");
+        for linkstr in links {
+            msgs.push(DiscordUrlResult {
+                url: linkstr.to_string(),
+                channel: chname.clone(),
+                server: srvname.clone(),
+            })
+        }
 
         // TODO: Add individual server upload here
         // TODO: Remove DiscordUrlResult, straight push linkstr
+    }
+
+    if msgs.is_empty() {
+        let emfmt = time::format_description::parse("[hour]:[minute]:[second]")?;
+        let emtime = prevtime.format(&emfmt)?;
+        console_log!("No new links since {emtime}. Skipping sending to KV.")
     }
 
     // let msgs = msgs

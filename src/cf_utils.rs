@@ -1,4 +1,4 @@
-use worker::{Env, KvStore};
+use worker::KvStore;
 
 pub async fn kv_append(
     kv: &KvStore,
