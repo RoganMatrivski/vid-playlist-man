@@ -144,7 +144,7 @@ impl DiscordClient {
 
             // If split_idx is anywhere below 100
             if split_idx < 100 {
-                return msgs[..split_idx + 1].to_vec();
+                return msgs[..split_idx].to_vec();
             }
 
             msgs
@@ -176,7 +176,7 @@ impl DiscordClient {
             return Ok(messages);
         }
 
-        // console_log!("Msg more than 100. Fetching more...");
+        console_log!("Msg more than 100. Fetching more...");
 
         // Safety measure in case of a runouts
         // Limit fetch loop to 5 min
@@ -204,10 +204,16 @@ impl DiscordClient {
             // console_log!("{limit:?} | {}", messages.len());
             // console_log!("Fetching more {cap} messages");
 
-            messages.append(&mut filter_msg(
+            let mut newmsg = filter_msg(
                 self.get_messages_before(channel_id, &messages.last().unwrap().id, cap)
                     .await?,
-            ));
+            );
+
+            if newmsg.is_empty() {
+                break;
+            }
+
+            messages.append(&mut newmsg);
 
             // console_log!("lastmsg: {:?}", messages.last());
             // console_log!("lastdate: {:?}", messages.last().map(|x| x.timestamp()));
@@ -399,7 +405,17 @@ pub async fn mainfn(env: &worker::Env) -> Result<()> {
             .get_messages_range(ch_id, range.clone(), None)
             .await?;
 
+        if let Some(m) = msg_res.first() {
+            let mut snip = m.content.clone();
+            snip.truncate(50); // truncate IS mutate?! C'mon dude
+            let t_str = m
+                .timestamp()?
+                .format(&time::format_description::well_known::Rfc3339)?;
+            console_log!("First message snippet: [{t_str}] {snip}");
+        }
+
         let msgcount = msg_res.len();
+        console_log!("msgcount: {msgcount}");
 
         let mut links = msg_res
             .into_iter()
