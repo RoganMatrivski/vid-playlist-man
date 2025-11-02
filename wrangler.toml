@@ -22,7 +22,10 @@ id = "ba00cb939ce14c87bfd9335278095ab0"
 preview_id = "53e56989bf9548e38b0a7d82f3c78ca6"
 remote = true
 
-[observability]
+[observability.traces]
+enabled = true
+head_sampling_rate = 1
+
 [observability.logs]
 enabled = true
 head_sampling_rate = 1
