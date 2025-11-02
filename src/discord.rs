@@ -471,7 +471,7 @@ pub async fn mainfn(env: &worker::Env, sched_diff: i64) -> Result<()> {
     //     .await
     //     .expect("Failed sending KV");
 
-    crate::cf_utils::kv_append(&kv, &kvname, &kvvalue).await?;
+    crate::cf_utils::kv_append(&kv, &kvname, format!("\n{kvvalue}")).await?;
 
     Ok(())
 }
