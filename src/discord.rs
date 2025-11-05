@@ -1,8 +1,5 @@
-use std::cell::RefCell;
-use std::rc::Rc;
-use std::time::Instant;
-
 use gloo_net::http::{Request, Response};
+use http::StatusCode;
 use itertools::Itertools;
 use serde::Deserialize;
 
@@ -10,38 +7,45 @@ use anyhow::{Result, anyhow};
 use time::UtcDateTime;
 use worker::console_log;
 
+use backon::ExponentialBuilder;
+use backon::Retryable;
+
 const DISCORD_API: &str = "https://discord.com/api/v10";
 
 #[derive(Clone)]
 pub struct DiscordClient {
     token: String,
-    retry_after: Rc<RefCell<Option<Instant>>>,
 }
+
+#[derive(Debug)]
+struct HttpError {
+    status: u16,
+    // gloo-net Header cannot be sent between threads safely,
+    // This is a "workaround" for now
+    retry_after: u64,
+    message: String,
+}
+
+impl std::fmt::Display for HttpError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "HTTP error {}: {}", self.status, self.message)
+    }
+}
+
+impl std::error::Error for HttpError {}
 
 #[allow(dead_code)]
 impl DiscordClient {
     pub fn new(token: impl Into<String>) -> Self {
         Self {
             token: token.into(),
-            retry_after: Rc::new(RefCell::new(None)),
         }
     }
 
-    /// Internal helper to send authorized GET requests and parse JSON
-    #[async_recursion::async_recursion(?Send)]
-    async fn get_json<T>(&self, endpoint: &str) -> Result<T>
+    async fn fetch<T>(&self, endpoint: &str) -> Result<T>
     where
         T: serde::de::DeserializeOwned,
     {
-        let retry_after = *self.retry_after.borrow();
-        if let Some(when) = retry_after {
-            let now = Instant::now();
-            if now < when {
-                let wait = when - now;
-                wasmtimer::tokio::sleep(wait).await;
-            }
-        }
-
         let url = format!("{DISCORD_API}{endpoint}");
         let res: Response = Request::get(&url)
             .header("Authorization", &self.token)
@@ -50,35 +54,50 @@ impl DiscordClient {
             .await
             .map_err(|e| anyhow!("Network error: {}", e))?;
 
-        // Check for rate limit (429)
-        if res.status() == 429 {
-            let retry_after_secs = res
-                .headers()
-                .get("Retry-After")
-                .and_then(|s| s.parse::<f64>().ok())
-                .unwrap_or(1.0);
+        if res.status() != StatusCode::OK {
+            let retry_after = if let Some(retry_after) = res.headers().get("Retry-After") {
+                // Parse the Retry-After header and adjust the backoff duration
+                let retry_after = retry_after.to_string();
+                retry_after.parse::<u64>().unwrap_or(0)
+            } else {
+                0u64
+            };
 
-            let duration = std::time::Duration::from_secs_f64(retry_after_secs);
-            let next_time = Instant::now() + duration;
-            *self.retry_after.borrow_mut() = Some(next_time);
-
-            // Wait, then retry once
-            wasmtimer::tokio::sleep(duration).await;
-            return self.get_json(endpoint).await;
-        }
-
-        // On success, clear cooldown (some minor random jitter could be added here)
-        *self.retry_after.borrow_mut() = None;
-
-        if !res.ok() {
-            return Err(anyhow!(
-                "Discord API error {} at {}",
-                res.status(),
-                endpoint
-            ));
+            let src = HttpError {
+                status: res.status(),
+                retry_after,
+                message: format!("Request failed with status {}", res.status()),
+            };
+            return Err(anyhow::Error::new(src));
         }
 
         Ok(res.json::<T>().await?)
+    }
+
+    /// Internal helper to send authorized GET requests and parse JSON
+    async fn get_json<T>(&self, endpoint: &str) -> Result<T>
+    where
+        T: serde::de::DeserializeOwned,
+    {
+        let fetchcall = || self.fetch::<T>(endpoint);
+        let res = fetchcall
+            .retry(ExponentialBuilder::default().with_jitter())
+            .adjust(|err, dur| match err.downcast_ref::<HttpError>() {
+                Some(v) => {
+                    if v.status == StatusCode::TOO_MANY_REQUESTS {
+                        Some(std::time::Duration::from_secs(v.retry_after))
+                    } else {
+                        dur
+                    }
+                }
+                None => dur,
+            })
+            .notify(|err, dur| {
+                worker::console_warn!("retrying {:?} after {:?}", err, dur);
+            })
+            .await?;
+
+        Ok(res)
     }
 
     /// Get channel info (returns name + guild_id)
