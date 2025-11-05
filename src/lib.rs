@@ -24,6 +24,7 @@ pub async fn cron_event(event: ScheduledEvent, env: Env, _ctx: ScheduleContext) 
     let cron = croner::Cron::from_str(&event.cron()).unwrap();
     let two_cron = cron.iter_before(t_chrono).take(2).collect::<Vec<_>>();
     let crondiff = (two_cron[0] - two_cron[1]).num_minutes();
+    console_log!("cron description: {}", cron.describe());
     console_log!("{crondiff} | {t_chrono} | {}", t as i64);
 
     if let Err(e) = discord::mainfn(&env, crondiff).await {

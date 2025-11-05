@@ -416,7 +416,7 @@ pub async fn mainfn(env: &worker::Env, sched_diff: i64) -> Result<()> {
         let msgcount = msg_res.len();
         console_log!("msgcount: {msgcount}");
 
-        let mut links = msg_res
+        let links = msg_res
             .into_iter()
             .map(|x| x.content)
             .flat_map(|x| {
@@ -425,11 +425,12 @@ pub async fn mainfn(env: &worker::Env, sched_diff: i64) -> Result<()> {
                     .map(|x| x.as_str().to_string())
                     .collect_vec()
             })
-            .filter(|x| !excluder.is_match(x))
-            .collect::<Vec<_>>();
+            .collect_vec();
+
+        let filtered_count = links.iter().filter(|x| excluder.is_match(x)).count();
 
         console_log!(
-            "Fetched from {chname} ({srvname}): {} new message, {} new links",
+            "Fetched from {chname} ({srvname}): {} new message, {} new links, {} links excluded",
             if msgcount == 0 {
                 "No"
             } else {
@@ -439,16 +440,28 @@ pub async fn mainfn(env: &worker::Env, sched_diff: i64) -> Result<()> {
                 "no"
             } else {
                 &links.len().to_string()
+            },
+            if filtered_count == 0 {
+                "no"
+            } else {
+                &filtered_count.to_string()
             }
         );
 
-        urls.append(&mut links);
+        let mut filtered_links = links
+            .into_iter()
+            .filter(|x| !excluder.is_match(x))
+            .collect_vec();
+
+        urls.append(&mut filtered_links);
     }
 
     if urls.is_empty() {
         let emfmt = time::format_description::parse("[hour]:[minute]:[second]")?;
         let emtime = prevtime.format(&emfmt)?;
-        console_log!("No new links since {emtime}. Skipping sending to KV.")
+        console_log!("No new links since {emtime}. Skipping sending to KV.");
+
+        return Ok(());
     }
 
     // let msgs = msgs
@@ -471,7 +484,25 @@ pub async fn mainfn(env: &worker::Env, sched_diff: i64) -> Result<()> {
     //     .await
     //     .expect("Failed sending KV");
 
-    crate::cf_utils::kv_append(&kv, &kvname, format!("\n{kvvalue}")).await?;
+    // crate::cf_utils::kv_append(&kv, &kvname, format!("\n{kvvalue}")).await?;
+    {
+        console_log!("Getting previous KV to append");
+        let prev = kv
+            .get(&kvname)
+            .text()
+            .await
+            .expect("Failed prepping KV get")
+            .unwrap_or("".into());
+        let newval = prev + "\n" + kvvalue.as_ref();
+
+        console_log!("Sending to KV");
+        kv.put(&kvname, &newval)
+            .expect("Failed prepping KV send")
+            .execute()
+            .await
+            .expect("Failed sending KV");
+        console_log!("Done!");
+    }
 
     Ok(())
 }
