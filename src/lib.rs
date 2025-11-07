@@ -15,7 +15,7 @@ pub async fn main(req: Request, env: Env, _ctx: worker::Context) -> Result<Respo
     tracing_worker::init(&env);
 
     Router::new()
-        .get("/", |_, _| Response::ok(""))
+        .get("/", |_, _| Response::error("", 404))
         .get_async("/get", |req, _ctx| async move {
             let url = req.url()?;
             let mut query_pairs = url.query_pairs();
