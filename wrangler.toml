@@ -18,7 +18,7 @@ binding = "VID_PLAYLIST_MAN"
 service = "vid-playlist-man"
 
 [triggers]
-crons = ["0 * * * *"] # “At every 5th minute.” -crontab.guru
+crons = ["0 */3 * * *"] # “At every 3rd hour.” -crontab.guru
 
 [[kv_namespaces]]
 binding = "VID_PLAYLIST_MANAGER_KV"

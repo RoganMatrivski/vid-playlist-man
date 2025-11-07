@@ -2,7 +2,7 @@ use anyhow::Result;
 use itertools::Itertools;
 use scraper::{Html, Selector};
 use url::Url;
-use worker::console_log;
+use worker::{console_debug, console_log};
 
 fn get_page_links(document: &scraper::html::Html) -> Vec<String> {
     let selector = Selector::parse("a").unwrap();
@@ -90,13 +90,13 @@ pub async fn mainfn(env: &worker::Env) -> Result<()> {
         let kvname = format!("latest_{name}");
         let kvvalue = metadata.clone() + &res.text().await?;
 
-        console_log!("Sending to KV");
+        console_debug!("Sending to KV");
         kv.put(&kvname, &kvvalue)
             .expect("Failed prepping KV send")
             .execute()
             .await
             .expect("Failed sending KV");
-        console_log!("Done!");
+        console_debug!("Done!");
     }
 
     Ok(())
