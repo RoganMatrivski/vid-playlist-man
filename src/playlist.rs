@@ -1,8 +1,8 @@
 use anyhow::Result;
 use itertools::Itertools;
-use scraper::{Html, Selector};
+use scraper::Selector;
 use url::Url;
-use worker::{console_debug, console_log};
+use worker::console_debug;
 
 fn get_page_links(document: &scraper::html::Html) -> Vec<String> {
     let selector = Selector::parse("a").unwrap();

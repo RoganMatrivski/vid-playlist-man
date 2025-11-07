@@ -33,6 +33,84 @@ pub async fn main(req: Request, env: Env, _ctx: worker::Context) -> Result<Respo
                 Response::error("url key empty", 400)
             }
         })
+        .get_async("/kv", |req, ctx| async move {
+            let kv = ctx.env.kv("VID_PLAYLIST_MANAGER_KV")?;
+            let list = kv.list().execute().await?;
+            let names = list.keys.into_iter().map(|x| x.name).collect_vec();
+
+            let as_html = req
+                .headers()
+                .get("Accept")?
+                .unwrap_or("".into())
+                .contains("text/html");
+
+            if !as_html {
+                Response::ok(names.join("\n"))
+            } else {
+                Response::from_html(
+                    rsx! {
+                    <!DOCTYPE html><html>
+                    <head><title>kv list</title></head>
+                        <body><div>
+                            @for s in &names {
+                                <ul>
+                                    <li><a href={"/kv/" s}>(s)</a></li>
+                                </ul>
+                            }
+                        </div></body>
+                    </html>
+                            }
+                    .render()
+                    .as_inner(),
+                )
+            }
+        })
+        .get_async("/kv/new", |_, _| async move {
+            Response::from_html(
+                rsx! {
+                <!DOCTYPE html><html>
+                <head><title>new kv</title></head>
+                    <body>
+                    <form action="/kvnew" method="post">
+                        <input id="keyname" name="keyname" /><br/>
+                        <textarea id="keyvalue" name="keyvalue" rows="6" cols="40" required></textarea><br/>
+                        <button type="submit">Submit</button>
+                    </form>
+                    </body>
+                </html>
+                        }
+                .render()
+                .as_inner(),
+            )
+        })
+        .post_async("/kv/new", |mut req, ctx| async move {
+            let body = req.text().await?;
+            let form: std::collections::HashMap<String, String> =
+                form_urlencoded::parse(body.as_bytes())
+                    .into_owned()
+                    .collect();
+
+            let kvname = if let Some(kvname) = form.get("keyname") {
+                kvname
+            } else {
+                return Response::error("Missing 'keyname' field", 400);
+            };
+
+            let kvvalue = if let Some(kvvalue) = form.get("keyvalue") {
+                kvvalue
+            } else {
+                return Response::error("Missing 'keyvalue' field", 400);
+            };
+
+            let kv = ctx.env.kv("VID_PLAYLIST_MANAGER_KV")?;
+
+            kv.put(kvname, kvvalue)?
+                .execute()
+                .await?;
+
+            Response::ok("KV set")
+        })
+
         .get_async("/kv/:keyname", |req, ctx| async move {
             let kvname = if let Some(n) = ctx.param("keyname") {
                 n
@@ -66,38 +144,6 @@ pub async fn main(req: Request, env: Env, _ctx: worker::Context) -> Result<Respo
                     }
                 }
                 None => Response::error("KV Empty", 404),
-            }
-        })
-        .get_async("/kvlist", |req, ctx| async move {
-            let kv = ctx.env.kv("VID_PLAYLIST_MANAGER_KV")?;
-            let list = kv.list().execute().await?;
-            let names = list.keys.into_iter().map(|x| x.name).collect_vec();
-
-            let as_html = req
-                .headers()
-                .get("Accept")?
-                .unwrap_or("".into())
-                .contains("text/html");
-
-            if !as_html {
-                Response::ok(names.join("\n"))
-            } else {
-                Response::from_html(
-                    rsx! {
-                    <!DOCTYPE html><html>
-                    <head><title>kv list</title></head>
-                        <body><div>
-                            @for s in &names {
-                                <ul>
-                                    <li><a href={"/kv/" s}>(s)</a></li>
-                                </ul>
-                            }
-                        </div></body>
-                    </html>
-                            }
-                    .render()
-                    .as_inner(),
-                )
             }
         })
         // .get("*", |_, _| Response::error("Not found", 404))

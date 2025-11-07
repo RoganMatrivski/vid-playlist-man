@@ -4,6 +4,7 @@ use anyhow::{Result, anyhow};
 use backon::{ExponentialBuilder, Retryable};
 use gloo_net::http::{Headers, Request, Response};
 use http::{HeaderMap, HeaderName, HeaderValue, StatusCode};
+use worker::console_error;
 
 #[derive(Debug, Clone)]
 pub struct Client {
@@ -107,11 +108,17 @@ impl Client {
                     if v.status == StatusCode::TOO_MANY_REQUESTS {
                         let retry_after = if let Some(retry_after) = v.headers.get("Retry-After") {
                             // Parse the Retry-After header and adjust the backoff
-                            let retry_after = retry_after.to_str().unwrap_or("0");
-                            retry_after.parse::<u64>().unwrap_or(0)
+                            let retry_after = retry_after.to_str().unwrap_or("30");
+                            retry_after.parse::<u64>().unwrap_or(30)
                         } else {
-                            0u64
+                            30u64
                         };
+
+                        if retry_after > 60 * 15 {
+                            // Retry after is more than 15 mins. Maybe abort
+                            console_error!("Retry-After returns duration more than 15 minutes ({retry_after}). Cancelling...");
+                            return None
+                        }
 
                         Some(std::time::Duration::from_secs(retry_after))
                     } else {
