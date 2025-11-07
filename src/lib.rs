@@ -1,5 +1,8 @@
 use std::str::FromStr;
 
+use hypertext::{prelude::*, rsx};
+use itertools::Itertools;
+
 use worker::*;
 
 mod cf_utils;
@@ -11,14 +14,12 @@ mod playlist;
 pub async fn main(req: Request, env: Env, _ctx: worker::Context) -> Result<Response> {
     tracing_worker::init(&env);
 
-    let path = req.path();
+    Router::new()
+        .get("/", |_, _| Response::ok(""))
+        .get_async("/get", |req, _ctx| async move {
+            let url = req.url()?;
+            let mut query_pairs = url.query_pairs();
 
-    let url = req.url()?;
-    let mut query_pairs = url.query_pairs();
-
-    match path.as_str() {
-        "/" => Response::ok(""),
-        "/get" => {
             let url = query_pairs
                 .find(|(key, _)| key == "url")
                 .map(|(_, value)| value.to_string());
@@ -31,9 +32,77 @@ pub async fn main(req: Request, env: Env, _ctx: worker::Context) -> Result<Respo
             } else {
                 Response::error("url key empty", 400)
             }
-        }
-        _ => Response::error("Not found", 404),
-    }
+        })
+        .get_async("/kv/:keyname", |req, ctx| async move {
+            let kvname = if let Some(n) = ctx.param("keyname") {
+                n
+            } else {
+                return Response::error("KV not found", 404);
+            };
+
+            let as_html = req
+                .headers()
+                .get("Accept")?
+                .unwrap_or("".into())
+                .contains("text/html");
+
+            let kv = ctx.env.kv("VID_PLAYLIST_MANAGER_KV")?;
+
+            match kv.get(kvname).text().await? {
+                Some(s) => {
+                    if !as_html {
+                        Response::ok(s)
+                    } else {
+                        Response::from_html(
+                            rsx! {
+                                <!DOCTYPE html><html>
+                                <head><title>(kvname)</title></head>
+                                    <body><p style="white-space: pre-wrap;">(s)</p></body>
+                                </html>
+                            }
+                            .render()
+                            .as_inner(),
+                        )
+                    }
+                }
+                None => Response::error("KV Empty", 404),
+            }
+        })
+        .get_async("/kvlist", |req, ctx| async move {
+            let kv = ctx.env.kv("VID_PLAYLIST_MANAGER_KV")?;
+            let list = kv.list().execute().await?;
+            let names = list.keys.into_iter().map(|x| x.name).collect_vec();
+
+            let as_html = req
+                .headers()
+                .get("Accept")?
+                .unwrap_or("".into())
+                .contains("text/html");
+
+            if !as_html {
+                Response::ok(names.join("\n"))
+            } else {
+                Response::from_html(
+                    rsx! {
+                    <!DOCTYPE html><html>
+                    <head><title>kv list</title></head>
+                        <body><div>
+                            @for s in &names {
+                                <ul>
+                                    <li><a href={"/kv/" s}>(s)</a></li>
+                                </ul>
+                            }
+                        </div></body>
+                    </html>
+                            }
+                    .render()
+                    .as_inner(),
+                )
+            }
+        })
+        // .get("*", |_, _| Response::error("Not found", 404))
+        .run(req, env)
+        .await
 }
 
 #[event(scheduled)]
