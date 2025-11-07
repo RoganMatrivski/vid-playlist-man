@@ -1,77 +1,33 @@
-use gloo_net::http::{Request, Response};
-use http::StatusCode;
 use itertools::Itertools;
 use serde::Deserialize;
 
-use anyhow::{Result, anyhow};
+use anyhow::Result;
 use time::UtcDateTime;
 use worker::console_log;
-
-use backon::ExponentialBuilder;
-use backon::Retryable;
 
 const DISCORD_API: &str = "https://discord.com/api/v10";
 
 #[derive(Clone)]
 pub struct DiscordClient {
-    token: String,
+    fetcher: crate::fetcher::Client,
 }
-
-#[derive(Debug)]
-struct HttpError {
-    status: u16,
-    // gloo-net Header cannot be sent between threads safely,
-    // This is a "workaround" for now
-    retry_after: u64,
-    message: String,
-}
-
-impl std::fmt::Display for HttpError {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "HTTP error {}: {}", self.status, self.message)
-    }
-}
-
-impl std::error::Error for HttpError {}
 
 #[allow(dead_code)]
 impl DiscordClient {
-    pub fn new(token: impl Into<String>) -> Self {
-        Self {
-            token: token.into(),
-        }
-    }
+    pub fn new(token: impl AsRef<str>) -> Result<Self> {
+        let mut headers = http::HeaderMap::new();
+        headers.append(
+            "User-Agent",
+            http::HeaderValue::from_str("DiscordOccasionalMsgFetcher (gloo-net, v0.1)")?,
+        );
+        headers.append(
+            "Authorization",
+            http::HeaderValue::from_str(token.as_ref())?,
+        );
 
-    async fn fetch<T>(&self, endpoint: &str) -> Result<T>
-    where
-        T: serde::de::DeserializeOwned,
-    {
-        let url = format!("{DISCORD_API}{endpoint}");
-        let res: Response = Request::get(&url)
-            .header("Authorization", &self.token)
-            .header("User-Agent", "DiscordOccasionalMsgFetcher (gloo-net, v0.1)")
-            .send()
-            .await
-            .map_err(|e| anyhow!("Network error: {}", e))?;
-
-        if res.status() != StatusCode::OK {
-            let retry_after = if let Some(retry_after) = res.headers().get("Retry-After") {
-                // Parse the Retry-After header and adjust the backoff duration
-                let retry_after = retry_after.to_string();
-                retry_after.parse::<u64>().unwrap_or(0)
-            } else {
-                0u64
-            };
-
-            let src = HttpError {
-                status: res.status(),
-                retry_after,
-                message: format!("Request failed with status {}", res.status()),
-            };
-            return Err(anyhow::Error::new(src));
-        }
-
-        Ok(res.json::<T>().await?)
+        Ok(Self {
+            fetcher: crate::fetcher::Client::new(DISCORD_API).with_headers(headers),
+        })
     }
 
     /// Internal helper to send authorized GET requests and parse JSON
@@ -79,25 +35,7 @@ impl DiscordClient {
     where
         T: serde::de::DeserializeOwned,
     {
-        let fetchcall = || self.fetch::<T>(endpoint);
-        let res = fetchcall
-            .retry(ExponentialBuilder::default().with_jitter())
-            .adjust(|err, dur| match err.downcast_ref::<HttpError>() {
-                Some(v) => {
-                    if v.status == StatusCode::TOO_MANY_REQUESTS {
-                        Some(std::time::Duration::from_secs(v.retry_after))
-                    } else {
-                        dur
-                    }
-                }
-                None => dur,
-            })
-            .notify(|err, dur| {
-                worker::console_warn!("retrying {:?} after {:?}", err, dur);
-            })
-            .await?;
-
-        Ok(res)
+        self.fetcher.get_json(endpoint).await
     }
 
     /// Get channel info (returns name + guild_id)
@@ -391,7 +329,7 @@ pub async fn mainfn(env: &worker::Env, sched_diff: i64) -> Result<()> {
 
     let kv = env.kv("VID_PLAYLIST_MANAGER_KV")?;
 
-    let client = DiscordClient::new(token.to_string());
+    let client = DiscordClient::new(token.to_string())?;
 
     let currtime = time::UtcDateTime::now();
     let prevtime = currtime.saturating_sub(time::Duration::minutes(sched_diff));

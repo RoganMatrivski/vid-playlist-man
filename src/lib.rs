@@ -4,12 +4,36 @@ use worker::*;
 
 mod cf_utils;
 mod discord;
+mod fetcher;
+mod playlist;
 
 #[event(fetch)]
-pub async fn main(_req: Request, env: Env, _ctx: worker::Context) -> Result<Response> {
+pub async fn main(req: Request, env: Env, _ctx: worker::Context) -> Result<Response> {
     tracing_worker::init(&env);
 
-    Response::ok("")
+    let path = req.path();
+
+    let url = req.url()?;
+    let mut query_pairs = url.query_pairs();
+
+    match path.as_str() {
+        "/" => Response::ok(""),
+        "/get" => {
+            let url = query_pairs
+                .find(|(key, _)| key == "url")
+                .map(|(_, value)| value.to_string());
+
+            if let Some(u) = url {
+                match playlist::mainfn_single(&u).await {
+                    Ok(x) => Response::ok(x),
+                    Err(e) => Response::error(format!("GET request failed. {e}"), 500),
+                }
+            } else {
+                Response::error("url key empty", 400)
+            }
+        }
+        _ => Response::error("Not found", 404),
+    }
 }
 
 #[event(scheduled)]
@@ -28,6 +52,10 @@ pub async fn cron_event(event: ScheduledEvent, env: Env, _ctx: ScheduleContext) 
     console_log!("{crondiff} | {t_chrono} | {}", t as i64);
 
     if let Err(e) = discord::mainfn(&env, crondiff).await {
+        console_error!("ERROR: {e}")
+    }
+
+    if let Err(e) = playlist::mainfn(&env).await {
         console_error!("ERROR: {e}")
     }
 

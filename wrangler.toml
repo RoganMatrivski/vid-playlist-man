@@ -13,6 +13,10 @@ ip = "0.0.0.0"
 port = 8800
 local_protocol = "http"
 
+[[services]]
+binding = "VID_PLAYLIST_MAN"
+service = "vid-playlist-man"
+
 [triggers]
 crons = ["0 * * * *"] # “At every 5th minute.” -crontab.guru
 
