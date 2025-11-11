@@ -17,20 +17,13 @@ pub async fn kv_list(req: Request, ctx: RouteContext<()>) -> Result<Response> {
         Response::ok(names.join("\n"))
     } else {
         Response::from_html(
-            rsx! {
-            <!DOCTYPE html><html>
-            <head><title>kv list</title></head>
-                <body><div>
-                    @for s in &names {
-                        <ul>
-                            <li><a href={"/kv/" s}>(s)</a></li>
-                        </ul>
-                    }
-                </div></body>
-            </html>
-                    }
-            .render()
-            .as_inner(),
+            crate::htmlgen::gen_linkpage(
+                names
+                    .into_iter()
+                    .map(|x| crate::htmlgen::Nav::new(&x, &x))
+                    .collect_vec(),
+            )
+            .expect("Failed render template"),
         )
     }
 }
@@ -56,14 +49,7 @@ pub async fn kv_get(req: Request, ctx: RouteContext<()>) -> Result<Response> {
                 Response::ok(s)
             } else {
                 Response::from_html(
-                    rsx! {
-                        <!DOCTYPE html><html>
-                        <head><title>(kvname)</title></head>
-                            <body><p style="white-space: pre-wrap;">(s)</p></body>
-                        </html>
-                    }
-                    .render()
-                    .as_inner(),
+                    crate::htmlgen::gen_plaintext(s.trim()).expect("Failed render template"),
                 )
             }
         }
