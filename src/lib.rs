@@ -5,8 +5,10 @@ use worker::*;
 mod cf_utils;
 mod discord;
 mod fetcher;
-mod kvmanager;
+mod htmlgen;
 mod playlist;
+
+mod kvmanager;
 
 #[event(fetch)]
 pub async fn main(req: Request, env: Env, _ctx: worker::Context) -> Result<Response> {
