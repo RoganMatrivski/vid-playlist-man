@@ -64,10 +64,6 @@ pub async fn cron_event(event: ScheduledEvent, env: Env, _ctx: ScheduleContext) 
         console_error!("ERROR: {e}")
     }
 
-    if let Err(e) = playlist::mainfn(&env).await {
-        console_error!("ERROR: {e}")
-    }
-
     console_log!("Done running schedule task");
 
     // Ok(())
