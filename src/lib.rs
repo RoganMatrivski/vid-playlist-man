@@ -9,6 +9,7 @@ mod htmlgen;
 mod playlist;
 
 mod kvmanager;
+mod playlistviewer;
 
 #[event(fetch)]
 pub async fn main(req: Request, env: Env, _ctx: worker::Context) -> Result<Response> {
@@ -37,6 +38,8 @@ pub async fn main(req: Request, env: Env, _ctx: worker::Context) -> Result<Respo
         .get_async("/kv/new", kvmanager::kv_new_get)
         .post_async("/kv/new", kvmanager::kv_new_post)
         .get_async("/kv/:keyname", kvmanager::kv_get)
+        .get_async("/playlist", playlistviewer::playlist_list)
+        .get_async("/playlist/:name", playlistviewer::playlist_single)
         // .get("*", |_, _| Response::error("Not found", 404))
         .run(req, env)
         .await
