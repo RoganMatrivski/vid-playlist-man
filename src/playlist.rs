@@ -2,7 +2,6 @@ use anyhow::Result;
 use itertools::Itertools;
 use scraper::Selector;
 use url::Url;
-use worker::console_debug;
 
 fn get_page_links(document: &scraper::html::Html) -> Vec<String> {
     let selector = Selector::parse("a").unwrap();
@@ -47,59 +46,6 @@ fn get_baseurl(rawurl: &str) -> String {
 
     // Construct base URL as "[protocol]://[hostname]"
     format!("{}://{}", parsed.scheme(), parsed.host_str().unwrap_or(""))
-}
-
-#[derive(serde::Deserialize, Debug)]
-struct PlaylistSource {
-    name: String,
-    url: String,
-}
-
-pub async fn mainfn(env: &worker::Env) -> Result<()> {
-    let kv = env.kv("VID_PLAYLIST_MANAGER_KV")?;
-    let selfsrv = env.service("VID_PLAYLIST_MAN").unwrap();
-
-    let tomlstr = kv
-        .get("config_playlist")
-        .text()
-        .await
-        .expect("Failed getting playlist config")
-        .unwrap_or("".into());
-
-    let tomlval = toml::from_str::<toml::Value>(&tomlstr)?;
-    let src: Vec<PlaylistSource> = tomlval
-        .get("playlist_sources")
-        .unwrap()
-        .clone()
-        .try_into()?;
-
-    let timefmt =
-        time::UtcDateTime::now().format(&time::format_description::well_known::Iso8601::DEFAULT)?;
-    let metadata = format!(
-        "// METADATA: {}\n\n",
-        serde_json::json!({
-            "created_at": timefmt
-        })
-    );
-
-    for PlaylistSource { name, url } in src {
-        let encurl = urlencoding::encode(&url);
-        let fetchurl = format!("https://internal/get?url={encurl}");
-        let mut res = selfsrv.fetch(&fetchurl, None).await.unwrap();
-
-        let kvname = format!("latest_{name}");
-        let kvvalue = metadata.clone() + &res.text().await?;
-
-        console_debug!("Sending to KV");
-        kv.put(&kvname, &kvvalue)
-            .expect("Failed prepping KV send")
-            .execute()
-            .await
-            .expect("Failed sending KV");
-        console_debug!("Done!");
-    }
-
-    Ok(())
 }
 
 pub async fn mainfn_single(url: &str) -> Result<String> {

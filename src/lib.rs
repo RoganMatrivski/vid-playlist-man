@@ -2,7 +2,6 @@ use std::str::FromStr;
 
 use worker::*;
 
-mod cf_utils;
 mod discord;
 mod fetcher;
 mod htmlgen;
