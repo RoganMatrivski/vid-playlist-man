@@ -123,7 +123,7 @@ impl Client {
                         Some(std::time::Duration::from_secs(retry_after))
                     } else {
                         dur
-                    }
+                    }.max(Some(std::time::Duration::from_secs(1)))
                 }
                 None => dur,
             })
