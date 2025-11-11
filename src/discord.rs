@@ -112,7 +112,6 @@ impl DiscordClient {
         // First round of message batch
         messages.append(&mut filter_msg(match date_range.end_bound() {
             std::ops::Bound::Included(&d) | std::ops::Bound::Excluded(&d) => {
-                // console_log!("{d:?} | {}", d.unix_timestamp());
                 let before_id = utils::unix_ms_to_snowflake(d.unix_timestamp() * 1000, 0, 0)?;
                 self.get_messages_before(
                     channel_id,
@@ -160,9 +159,6 @@ impl DiscordClient {
                 100
             } as u8;
 
-            // console_log!("{limit:?} | {}", messages.len());
-            // console_log!("Fetching more {cap} messages");
-
             let mut newmsg = filter_msg(
                 self.get_messages_before(channel_id, &messages.last().unwrap().id, cap)
                     .await?,
@@ -173,30 +169,6 @@ impl DiscordClient {
             }
 
             messages.append(&mut newmsg);
-
-            // console_log!("lastmsg: {:?}", messages.last());
-            // console_log!("lastdate: {:?}", messages.last().map(|x| x.timestamp()));
-            // console_log!(
-            //     "range: {:?} -- {:?}",
-            //     date_range.start_bound(),
-            //     date_range.end_bound()
-            // );
-            // console_log!(
-            //     "inrange: {:?}\n",
-            //     date_range.contains(&messages.last().unwrap().timestamp()?)
-            // );
-            // console_log!("firstmsg: {:?}", messages.first());
-            // console_log!("firstdate: {:?}", messages.first().map(|x| x.timestamp()));
-            // console_log!(
-            //     "range: {:?} -- {:?}",
-            //     date_range.start_bound(),
-            //     date_range.end_bound()
-            // );
-            // console_log!(
-            //     "inrange: {:?}",
-            //     date_range.contains(&messages.first().unwrap().timestamp()?)
-            // );
-            // console_log!("limit: {limit:?}\n");
         }
 
         Ok(messages)
