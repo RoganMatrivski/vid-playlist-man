@@ -1566,6 +1566,7 @@ dependencies = [
  "time",
  "toml",
  "tracing",
+ "tracing-subscriber",
  "tracing-worker",
  "url",
  "urlencoding",

@@ -2,6 +2,8 @@ use std::str::FromStr;
 
 use worker::*;
 
+mod logging;
+
 mod discord;
 mod fetcher;
 mod htmlgen;
@@ -12,7 +14,7 @@ mod playlistviewer;
 
 #[event(fetch)]
 pub async fn main(req: Request, env: Env, _ctx: worker::Context) -> Result<Response> {
-    tracing_worker::init(&env);
+    logging::init_tracing();
 
     Router::new()
         .get("/", |_, _| Response::error("", 404))
@@ -39,6 +41,15 @@ pub async fn main(req: Request, env: Env, _ctx: worker::Context) -> Result<Respo
         .get_async("/kv/:keyname", kvmanager::kv_get)
         .get_async("/playlist", playlistviewer::playlist_list)
         .get_async("/playlist/:name", playlistviewer::playlist_single)
+        .get("/test", |_, _| {
+            tracing::trace!("Testing trace");
+            tracing::debug!("Testing debug");
+            tracing::info!("Testing info");
+            tracing::warn!("Testing warn");
+            tracing::error!("Testing error");
+
+            Response::ok("")
+        })
         // .get("*", |_, _| Response::error("Not found", 404))
         .run(req, env)
         .await
