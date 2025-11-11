@@ -1,6 +1,5 @@
 use tracing::{Event, Level, Subscriber};
 use tracing_subscriber::{Layer, layer::Context};
-use worker::*;
 
 pub struct WorkerLayer {
     level: Level,

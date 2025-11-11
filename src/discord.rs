@@ -5,7 +5,6 @@ use serde::Deserialize;
 
 use anyhow::Result;
 use time::UtcDateTime;
-use worker::{console_error, console_log};
 
 const DISCORD_API: &str = "https://discord.com/api/v10";
 
@@ -134,7 +133,7 @@ impl DiscordClient {
             return Ok(messages);
         }
 
-        console_log!("Msg more than 100. Fetching more...");
+        tracing::info!("Msg more than 100. Fetching more...");
 
         // Safety measure in case of a runouts
         // Limit fetch loop to 5 min
@@ -302,11 +301,11 @@ pub async fn mainfn(env: &worker::Env, sched_diff: i64) -> Result<()> {
     {
         let timefmt = time::format_description::parse("[hour]:[minute]:[second]")?;
         let timestr = currtime.format(&timefmt)?;
-        console_log!("It is currently {timestr}");
+        tracing::debug!("It is currently {timestr}");
     }
 
     let range = prevtime..currtime;
-    console_log!("{range:?}");
+    tracing::debug!("{range:?}");
 
     let mut urls = vec![];
 
@@ -314,7 +313,7 @@ pub async fn mainfn(env: &worker::Env, sched_diff: i64) -> Result<()> {
         match ch_fetcher(&client, ch_id, range.clone()).await {
             Ok(mut x) => urls.append(&mut x),
             Err(e) => {
-                console_error!("Failed to fetch channel ID {ch_id}: {e}");
+                tracing::error!("Failed to fetch channel ID {ch_id}: {e}");
                 continue;
             }
         }
@@ -323,7 +322,7 @@ pub async fn mainfn(env: &worker::Env, sched_diff: i64) -> Result<()> {
     if urls.is_empty() {
         let emfmt = time::format_description::parse("[hour]:[minute]:[second]")?;
         let emtime = prevtime.format(&emfmt)?;
-        console_log!("No new links since {emtime}. Skipping sending to KV.");
+        tracing::info!("No new links since {emtime}. Skipping sending to KV.");
 
         return Ok(());
     }
@@ -350,7 +349,7 @@ pub async fn mainfn(env: &worker::Env, sched_diff: i64) -> Result<()> {
 
     // crate::cf_utils::kv_append(&kv, &kvname, format!("\n{kvvalue}")).await?;
     {
-        console_log!("Getting previous KV to append");
+        tracing::debug!("Getting previous KV to append");
         let prev = kv
             .get(&kvname)
             .text()
@@ -359,13 +358,13 @@ pub async fn mainfn(env: &worker::Env, sched_diff: i64) -> Result<()> {
             .unwrap_or("".into());
         let newval = prev + "\n" + kvvalue.as_ref();
 
-        console_log!("Sending to KV");
+        tracing::info!("Sending to KV");
         kv.put(&kvname, &newval)
             .expect("Failed prepping KV send")
             .execute()
             .await
             .expect("Failed sending KV");
-        console_log!("Done!");
+        tracing::info!("Done!");
     }
 
     Ok(())
@@ -407,11 +406,11 @@ async fn ch_fetcher(
         let t_str = m
             .timestamp()?
             .format(&time::format_description::well_known::Rfc3339)?;
-        console_log!("First message snippet: [{t_str}] {snip}");
+        tracing::debug!("First message snippet: [{t_str}] {snip}");
     }
 
     let msgcount = msg_res.len();
-    console_log!("msgcount: {msgcount}");
+    tracing::trace!("msgcount: {msgcount}");
 
     let links = msg_res
         .into_iter()
@@ -426,7 +425,7 @@ async fn ch_fetcher(
 
     let filtered_count = links.iter().filter(|x| EXCLUDER.is_match(x)).count();
 
-    console_log!(
+    tracing::info!(
         "Fetched from {chname} ({srvname}): {} new message, {} new links, {} links excluded",
         if msgcount == 0 {
             "No"

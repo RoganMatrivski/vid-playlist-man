@@ -4,7 +4,6 @@ use anyhow::{Result, anyhow};
 use backon::{ExponentialBuilder, Retryable};
 use gloo_net::http::{Headers, Request, Response};
 use http::{HeaderMap, HeaderName, HeaderValue, StatusCode};
-use worker::console_error;
 
 #[derive(Debug, Clone)]
 pub struct Client {
@@ -116,7 +115,7 @@ impl Client {
 
                         if retry_after > 60 * 15 {
                             // Retry after is more than 15 mins. Maybe abort
-                            console_error!("Retry-After returns duration more than 15 minutes ({retry_after}). Cancelling...");
+                            tracing::error!("Retry-After returns duration more than 15 minutes ({retry_after}). Cancelling...");
                             return None
                         }
 
@@ -128,7 +127,7 @@ impl Client {
                 None => dur,
             })
             .notify(|err, dur| {
-                worker::console_warn!("retrying {:?} after {:?}", err, dur);
+                tracing::warn!("retrying {:?} after {:?}", err, dur);
             })
             .await?;
 
