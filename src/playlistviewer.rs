@@ -34,7 +34,7 @@ pub async fn playlist_list(req: Request, ctx: RouteContext<()>) -> Result<Respon
             crate::htmlgen::gen_linkpage(
                 names
                     .into_iter()
-                    .map(|x| crate::htmlgen::Nav::new(x, x))
+                    .map(|x| crate::htmlgen::Nav::new(format!("playlist/{x}"), x))
                     .collect_vec(),
             )
             .expect("Failed render template"),

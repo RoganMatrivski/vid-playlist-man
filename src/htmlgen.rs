@@ -69,7 +69,7 @@ pub fn gen_linkpage(navs: Vec<Nav>) -> Result<String> {
             .iter()
             .map(|x| {
                 minijinja::context! {
-                    href => format!("playlist/{}", x.href),
+                    href => x.href,
                     text => x.text
                 }
             })
