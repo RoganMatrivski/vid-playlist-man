@@ -1,9 +1,11 @@
+use std::sync::LazyLock;
+
 use itertools::Itertools;
 use serde::Deserialize;
 
 use anyhow::Result;
 use time::UtcDateTime;
-use worker::console_log;
+use worker::{console_error, console_log};
 
 const DISCORD_API: &str = "https://discord.com/api/v10";
 
@@ -311,15 +313,6 @@ mod utils {
     }
 }
 
-const EXCLUDED_PATTERNS: &[&str] = &[
-    "cdn.",
-    "tenor.",
-    "redgifs.",
-    "discordapp.",
-    "redd.it",
-    "media.tumblr.",
-];
-
 // TODO: New strat. Make this run each hour or less, store in temp_[yyyyMM]_*
 // TODO: Each month, process raw urls and concat.
 pub async fn mainfn(env: &worker::Env, sched_diff: i64) -> Result<()> {
@@ -343,74 +336,16 @@ pub async fn mainfn(env: &worker::Env, sched_diff: i64) -> Result<()> {
     let range = prevtime..currtime;
     console_log!("{range:?}");
 
-    let finder = linkify::LinkFinder::new();
-    // finder.url_must_have_scheme(false);
-    let excluder = aho_corasick::AhoCorasick::builder()
-        .ascii_case_insensitive(true)
-        .build(EXCLUDED_PATTERNS)?;
     let mut urls = vec![];
 
     for ch_id in channels {
-        let ch = client.get_channel(ch_id).await?;
-        let chname = ch.name;
-        let srv_id = ch
-            .guild_id
-            .expect("Failed to get Server ID (this shouldn't've been possible");
-        let srvname = client.get_guild(&srv_id).await?.name;
-        // let msg: Vec<Message> = client.get_messages(ch, 1).await?;
-        let msg_res = client
-            .get_messages_range(ch_id, range.clone(), None)
-            .await?;
-
-        if let Some(m) = msg_res.first() {
-            let snip = m.content.clone();
-            let t_str = m
-                .timestamp()?
-                .format(&time::format_description::well_known::Rfc3339)?;
-            console_log!("First message snippet: [{t_str}] {snip}");
-        }
-
-        let msgcount = msg_res.len();
-        console_log!("msgcount: {msgcount}");
-
-        let links = msg_res
-            .into_iter()
-            .map(|x| x.content)
-            .flat_map(|x| {
-                finder
-                    .links(&x)
-                    .map(|x| x.as_str().to_string())
-                    .collect_vec()
-            })
-            .collect_vec();
-
-        let filtered_count = links.iter().filter(|x| excluder.is_match(x)).count();
-
-        console_log!(
-            "Fetched from {chname} ({srvname}): {} new message, {} new links, {} links excluded",
-            if msgcount == 0 {
-                "No"
-            } else {
-                &msgcount.to_string()
-            },
-            if links.is_empty() {
-                "no"
-            } else {
-                &links.len().to_string()
-            },
-            if filtered_count == 0 {
-                "no"
-            } else {
-                &filtered_count.to_string()
+        match ch_fetcher(&client, ch_id, range.clone()).await {
+            Ok(mut x) => urls.append(&mut x),
+            Err(e) => {
+                console_error!("Failed to fetch channel ID {ch_id}: {e}");
+                continue;
             }
-        );
-
-        let mut filtered_links = links
-            .into_iter()
-            .filter(|x| !excluder.is_match(x))
-            .collect_vec();
-
-        urls.append(&mut filtered_links);
+        }
     }
 
     if urls.is_empty() {
@@ -462,4 +397,84 @@ pub async fn mainfn(env: &worker::Env, sched_diff: i64) -> Result<()> {
     }
 
     Ok(())
+}
+
+const EXCLUDED_PATTERNS: &[&str] = &[
+    "cdn.",
+    "tenor.",
+    "redgifs.",
+    "discordapp.",
+    "redd.it",
+    "media.tumblr.",
+];
+
+static FINDER: LazyLock<linkify::LinkFinder> = LazyLock::new(linkify::LinkFinder::new);
+static EXCLUDER: LazyLock<aho_corasick::AhoCorasick> = LazyLock::new(|| {
+    aho_corasick::AhoCorasick::builder()
+        .ascii_case_insensitive(true)
+        .build(EXCLUDED_PATTERNS)
+        .expect("Failed to init filter")
+});
+
+async fn ch_fetcher(
+    client: &DiscordClient,
+    ch_id: &str,
+    range: impl std::ops::RangeBounds<UtcDateTime>,
+) -> Result<Vec<String>> {
+    let ch = client.get_channel(ch_id).await?;
+    let chname = ch.name;
+    let srv_id = ch
+        .guild_id
+        .expect("Failed to get Server ID (this shouldn't've been possible");
+    let srvname = client.get_guild(&srv_id).await?.name;
+    // let msg: Vec<Message> = client.get_messages(ch, 1).await?;
+    let msg_res = client.get_messages_range(ch_id, range, None).await?;
+
+    if let Some(m) = msg_res.first() {
+        let snip = m.content.clone();
+        let t_str = m
+            .timestamp()?
+            .format(&time::format_description::well_known::Rfc3339)?;
+        console_log!("First message snippet: [{t_str}] {snip}");
+    }
+
+    let msgcount = msg_res.len();
+    console_log!("msgcount: {msgcount}");
+
+    let links = msg_res
+        .into_iter()
+        .map(|x| x.content)
+        .flat_map(|x| {
+            FINDER
+                .links(&x)
+                .map(|x| x.as_str().to_string())
+                .collect_vec()
+        })
+        .collect_vec();
+
+    let filtered_count = links.iter().filter(|x| EXCLUDER.is_match(x)).count();
+
+    console_log!(
+        "Fetched from {chname} ({srvname}): {} new message, {} new links, {} links excluded",
+        if msgcount == 0 {
+            "No"
+        } else {
+            &msgcount.to_string()
+        },
+        if links.is_empty() {
+            "no"
+        } else {
+            &links.len().to_string()
+        },
+        if filtered_count == 0 {
+            "no"
+        } else {
+            &filtered_count.to_string()
+        }
+    );
+
+    Ok(links
+        .into_iter()
+        .filter(|x| !EXCLUDER.is_match(x))
+        .collect_vec())
 }
