@@ -102,7 +102,7 @@ impl Client {
         };
 
         let res = fetchcall
-            .retry(ExponentialBuilder::default().with_jitter())
+            .retry(ExponentialBuilder::default().with_jitter().with_max_times(5).with_min_delay(std::time::Duration::from_secs(1)))
             .adjust(|err, dur| match err.downcast_ref::<HttpError>() {
                 Some(v) => {
                     if v.status == StatusCode::TOO_MANY_REQUESTS {
@@ -123,7 +123,7 @@ impl Client {
                         Some(std::time::Duration::from_secs(retry_after))
                     } else {
                         dur
-                    }.max(Some(std::time::Duration::from_secs(1)))
+                    }
                 }
                 None => dur,
             })
