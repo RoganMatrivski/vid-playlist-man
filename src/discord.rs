@@ -284,8 +284,6 @@ mod utils {
     }
 }
 
-// TODO: New strat. Make this run each hour or less, store in temp_[yyyyMM]_*
-// TODO: Each month, process raw urls and concat.
 pub async fn mainfn(env: &worker::Env, sched_diff: i64) -> Result<()> {
     let token = env.secret("DISCORD_TOKEN")?;
     let channels = env.secret("DISCORD_CHANNEL_IDS")?.to_string();
@@ -307,17 +305,20 @@ pub async fn mainfn(env: &worker::Env, sched_diff: i64) -> Result<()> {
     let range = prevtime..currtime;
     tracing::debug!("{range:?}");
 
-    let mut urls = vec![];
+    let urls_getter = futures::future::join_all(
+        channels
+            .iter()
+            .map(|x| ch_fetcher(&client, x, range.clone())),
+    )
+    .await;
 
-    for ch_id in channels {
-        match ch_fetcher(&client, ch_id, range.clone()).await {
-            Ok(mut x) => urls.append(&mut x),
-            Err(e) => {
-                tracing::error!("Failed to fetch channel ID {ch_id}: {e}");
-                continue;
-            }
-        }
-    }
+    let (urls, errs): (Vec<Vec<String>>, Vec<anyhow::Error>) =
+        urls_getter.into_iter().partition_result();
+
+    errs.iter()
+        .for_each(|err| tracing::error!(?err, "Fetch failed"));
+
+    let urls = urls.into_iter().flatten().collect_vec();
 
     if urls.is_empty() {
         let emfmt = time::format_description::parse("[hour]:[minute]:[second]")?;
@@ -327,27 +328,12 @@ pub async fn mainfn(env: &worker::Env, sched_diff: i64) -> Result<()> {
         return Ok(());
     }
 
-    // let msgs = msgs
-    //     .iter()
-    //     .sorted_by_key(|x| x.url.clone())
-    //     .dedup_by(|a, b| a.url == b.url)
-    //     .collect::<Vec<_>>();
-
     let timefmt = time::format_description::parse("[year]-[month]")?;
     let timestr = prevtime.format(&timefmt)?;
-
-    // let metadata = format!("// METADATA: {{\"created_at\":\"{}\"}}\n\n", currtime);
 
     let kvname = format!("{timestr}_discord_merged");
     let kvvalue = &urls.join("\n");
 
-    // kv.put(&kvname, kvvalue)
-    //     .expect("Failed prepping KV send")
-    //     .execute()
-    //     .await
-    //     .expect("Failed sending KV");
-
-    // crate::cf_utils::kv_append(&kv, &kvname, format!("\n{kvvalue}")).await?;
     {
         tracing::debug!("Getting previous KV to append");
         let prev = kv
@@ -387,6 +373,7 @@ static EXCLUDER: LazyLock<aho_corasick::AhoCorasick> = LazyLock::new(|| {
         .expect("Failed to init filter")
 });
 
+#[tracing::instrument(skip(client, range))]
 async fn ch_fetcher(
     client: &DiscordClient,
     ch_id: &str,
