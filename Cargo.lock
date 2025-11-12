@@ -1479,8 +1479,7 @@ dependencies = [
 [[package]]
 name = "tracing-worker"
 version = "0.1.9"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "5d76b064d04160b396507f4025bc5caf59fc63a960b8e38597eddf83ebd6b2ec"
+source = "git+https://github.com/RoganMatrivski/tracing-worker.git#59ee73726e61baba86f16e0fcec1c374b0bec1cf"
 dependencies = [
  "tracing",
  "tracing-subscriber",

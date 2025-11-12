@@ -2,8 +2,6 @@ use std::str::FromStr;
 
 use worker::*;
 
-mod logging;
-
 mod discord;
 mod fetcher;
 mod htmlgen;
@@ -14,7 +12,7 @@ mod playlistviewer;
 
 #[event(fetch)]
 pub async fn main(req: Request, env: Env, _ctx: worker::Context) -> Result<Response> {
-    logging::init_tracing();
+    tracing_worker::init_tracing(tracing::Level::TRACE);
 
     Router::new()
         .get("/", |_, _| Response::error("", 404))
@@ -57,7 +55,7 @@ pub async fn main(req: Request, env: Env, _ctx: worker::Context) -> Result<Respo
 
 #[event(scheduled)]
 pub async fn cron_event(event: ScheduledEvent, env: Env, _ctx: ScheduleContext) {
-    tracing_worker::init(&env);
+    tracing_worker::init_tracing(tracing::Level::TRACE);
 
     // Do whatever you want here – e.g., call an API, clean up KV, etc.
     tracing::info!("Running scheduled task: {:?}", event.cron());
