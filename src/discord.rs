@@ -1,21 +1,23 @@
 use std::sync::LazyLock;
 
 use itertools::Itertools;
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 
 use anyhow::Result;
 use time::UtcDateTime;
 
 const DISCORD_API: &str = "https://discord.com/api/v10";
+const PKG_NAME: &str = env!("CARGO_PKG_NAME");
 
 #[derive(Clone)]
 pub struct DiscordClient {
     fetcher: crate::fetcher::Client,
+    kv: worker::KvStore,
 }
 
 #[allow(dead_code)]
 impl DiscordClient {
-    pub fn new(token: impl AsRef<str>) -> Result<Self> {
+    pub fn new(token: impl AsRef<str>, kv: worker::KvStore) -> Result<Self> {
         let mut headers = http::HeaderMap::new();
         headers.append(
             "User-Agent",
@@ -28,6 +30,7 @@ impl DiscordClient {
 
         Ok(Self {
             fetcher: crate::fetcher::Client::new(DISCORD_API).with_headers(headers),
+            kv,
         })
     }
 
@@ -39,15 +42,61 @@ impl DiscordClient {
         self.fetcher.get_json(endpoint).await
     }
 
+    async fn get_kv<T>(&self, keyname: &str) -> Result<Option<T>>
+    where
+        T: serde::de::DeserializeOwned,
+    {
+        self.kv
+            .get(keyname)
+            .json()
+            .await
+            .map_err(|e: worker::KvError| anyhow::anyhow!("Failed to get kv: {e:?}"))
+    }
+
+    async fn put_kv<T>(&self, keyname: &str, value: T) -> Result<()>
+    where
+        T: serde::ser::Serialize,
+    {
+        self.kv
+            .put(keyname, value)
+            .map_err(|e| anyhow::anyhow!("Failed to serialize KV value: {e:?}"))?
+            .expiration_ttl(604_800) // 1 week should be fine. No one change stuff that much, right?
+            .execute()
+            .await
+            .map_err(|e| anyhow::anyhow!("Failed to put kv: {e:?}"))
+    }
+
+    /// Internal helper to send authorized GET requests and parse JSON
+    async fn get_json_cached<T>(&self, endpoint: &str) -> Result<T>
+    where
+        T: serde::de::DeserializeOwned + serde::Serialize,
+    {
+        let keyname = format!("{PKG_NAME}_discord_{endpoint}");
+        let kv_key = urlencoding::encode(&keyname);
+        if let Some(cached) = self.get_kv::<T>(&kv_key).await? {
+            tracing::trace!("KV HIT for {endpoint}");
+            return Ok(cached);
+        };
+
+        tracing::trace!("KV MISS for {endpoint}");
+
+        let res = self.get_json::<T>(endpoint).await?;
+
+        self.put_kv(&kv_key, &res).await?;
+
+        Ok(res)
+    }
+
     /// Get channel info (returns name + guild_id)
     pub async fn get_channel(&self, channel_id: &str) -> Result<Channel> {
-        self.get_json::<Channel>(&format!("/channels/{channel_id}"))
+        self.get_json_cached::<Channel>(&format!("/channels/{channel_id}"))
             .await
     }
 
     /// Get guild info (returns name)
     pub async fn get_guild(&self, guild_id: &str) -> Result<Guild> {
-        self.get_json::<Guild>(&format!("/guilds/{guild_id}")).await
+        self.get_json_cached::<Guild>(&format!("/guilds/{guild_id}"))
+            .await
     }
 
     /// Get the last N messages
@@ -175,7 +224,7 @@ impl DiscordClient {
 }
 
 #[allow(dead_code)]
-#[derive(Deserialize, Debug)]
+#[derive(Serialize, Deserialize, Debug)]
 pub struct Channel {
     pub id: String,
     pub name: String,
@@ -183,7 +232,7 @@ pub struct Channel {
 }
 
 #[allow(dead_code)]
-#[derive(Deserialize, Debug)]
+#[derive(Serialize, Deserialize, Debug)]
 pub struct Guild {
     pub id: String,
     pub name: String,
@@ -291,7 +340,7 @@ pub async fn mainfn(env: &worker::Env, sched_diff: i64) -> Result<()> {
 
     let kv = env.kv("VID_PLAYLIST_MANAGER_KV")?;
 
-    let client = DiscordClient::new(token.to_string())?;
+    let client = DiscordClient::new(token.to_string(), env.kv("KVCACHE")?)?;
 
     let currtime = time::UtcDateTime::now();
     let prevtime = currtime.saturating_sub(time::Duration::minutes(sched_diff));

@@ -26,6 +26,11 @@ id = "ba00cb939ce14c87bfd9335278095ab0"
 preview_id = "53e56989bf9548e38b0a7d82f3c78ca6"
 remote = true
 
+[[kv_namespaces]]
+binding = "KVCACHE"
+id = "e3e5bacc48a444318f62f3fa52e76016"
+preview_id = "e3e5bacc48a444318f62f3fa52e76016"
+
 [observability]
 [observability.logs]
 enabled = true

@@ -55,7 +55,7 @@ pub async fn main(req: Request, env: Env, _ctx: worker::Context) -> Result<Respo
 
 #[event(scheduled)]
 pub async fn cron_event(event: ScheduledEvent, env: Env, _ctx: ScheduleContext) {
-    tracing_worker::init_tracing(tracing::Level::TRACE);
+    tracing_worker::init_tracing(tracing::Level::DEBUG);
 
     // Do whatever you want here – e.g., call an API, clean up KV, etc.
     tracing::info!("Running scheduled task: {:?}", event.cron());
