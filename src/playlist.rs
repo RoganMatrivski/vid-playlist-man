@@ -67,14 +67,19 @@ pub async fn mainfn_single(url: &str) -> Result<String> {
         .try_collect()?;
 
     let maxpage = pagenum.into_iter().max().unwrap_or(1);
+    let sem = std::sync::Arc::new(async_lock::Semaphore::new(8));
 
     let pagelinks = (2..(maxpage + 1))
         .map(|x| {
             let endpoint = format!("{url}/page{}.html", x);
             let client = client.clone();
             let vid_baseurl = vid_baseurl.clone();
+            let sem = sem.clone();
 
             async move {
+                let _permit = sem.acquire().await;
+                tracing::trace!("Fetching page {x}");
+
                 let res = client.get_text(&endpoint).await?;
                 let doc = scraper::Html::parse_document(&res);
                 let links = get_video_links(&doc, &vid_baseurl);

@@ -354,10 +354,16 @@ pub async fn mainfn(env: &worker::Env, sched_diff: i64) -> Result<()> {
     let range = prevtime..currtime;
     tracing::debug!("{range:?}");
 
+    let sem = std::sync::Arc::new(async_lock::Semaphore::new(8));
+
     let urls_getter = futures::future::join_all(
         channels
             .iter()
-            .map(|x| ch_fetcher(&client, x, range.clone())),
+            .map(|x| (x, client.clone(), range.clone(), sem.clone()))
+            .map(|(x, c, r, sem)| async move {
+                let _permit = sem.acquire().await;
+                ch_fetcher(&c, x, r).await
+            }),
     )
     .await;
 
