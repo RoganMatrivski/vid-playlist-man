@@ -12,7 +12,7 @@ const PKG_NAME: &str = env!("CARGO_PKG_NAME");
 #[derive(Clone)]
 pub struct DiscordClient {
     fetcher: crate::fetcher::Client,
-    kv: worker::KvStore,
+    kv: crate::kvcache::KvCache,
 }
 
 #[allow(dead_code)]
@@ -30,7 +30,7 @@ impl DiscordClient {
 
         Ok(Self {
             fetcher: crate::fetcher::Client::new(DISCORD_API).with_headers(headers),
-            kv,
+            kv: crate::kvcache::KvCache::new(kv),
         })
     }
 
@@ -42,30 +42,6 @@ impl DiscordClient {
         self.fetcher.get_json(endpoint).await
     }
 
-    async fn get_kv<T>(&self, keyname: &str) -> Result<Option<T>>
-    where
-        T: serde::de::DeserializeOwned,
-    {
-        self.kv
-            .get(keyname)
-            .json()
-            .await
-            .map_err(|e: worker::KvError| anyhow::anyhow!("Failed to get kv: {e:?}"))
-    }
-
-    async fn put_kv<T>(&self, keyname: &str, value: T) -> Result<()>
-    where
-        T: serde::ser::Serialize,
-    {
-        self.kv
-            .put(keyname, value)
-            .map_err(|e| anyhow::anyhow!("Failed to serialize KV value: {e:?}"))?
-            .expiration_ttl(604_800) // 1 week should be fine. No one change stuff that much, right?
-            .execute()
-            .await
-            .map_err(|e| anyhow::anyhow!("Failed to put kv: {e:?}"))
-    }
-
     /// Internal helper to send authorized GET requests and parse JSON
     async fn get_json_cached<T>(&self, endpoint: &str) -> Result<T>
     where
@@ -73,7 +49,7 @@ impl DiscordClient {
     {
         let keyname = format!("{PKG_NAME}_discord_{endpoint}");
         let kv_key = urlencoding::encode(&keyname);
-        if let Some(cached) = self.get_kv::<T>(&kv_key).await? {
+        if let Some(cached) = self.kv.get::<T>(&kv_key).await? {
             tracing::trace!("KV HIT for {endpoint}");
             return Ok(cached);
         };
@@ -82,7 +58,7 @@ impl DiscordClient {
 
         let res = self.get_json::<T>(endpoint).await?;
 
-        self.put_kv(&kv_key, &res).await?;
+        self.kv.set(&kv_key, &res, 604_800).await?;
 
         Ok(res)
     }

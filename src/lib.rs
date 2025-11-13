@@ -5,6 +5,7 @@ use worker::*;
 mod discord;
 mod fetcher;
 mod htmlgen;
+mod kvcache;
 mod playlist;
 
 mod kvmanager;
@@ -68,7 +69,6 @@ pub async fn main(req: Request, env: Env, _ctx: worker::Context) -> Result<Respo
 
 #[event(scheduled)]
 pub async fn cron_event(event: ScheduledEvent, env: Env, _ctx: ScheduleContext) {
-    console_log!("{:?}", get_envvar(&env));
     tracing_worker::init_tracing(if get_envvar(&env) == "production" {
         tracing::Level::INFO
     } else {
