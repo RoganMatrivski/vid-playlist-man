@@ -30,7 +30,7 @@ pub async fn main(req: Request, env: Env, _ctx: worker::Context) -> Result<Respo
 
     Router::new()
         .get("/", |_, _| Response::error("", 404))
-        .get_async("/get", |req, _ctx| async move {
+        .get_async("/get", |req, ctx| async move {
             let url = req.url()?;
             let mut query_pairs = url.query_pairs();
 
@@ -39,7 +39,7 @@ pub async fn main(req: Request, env: Env, _ctx: worker::Context) -> Result<Respo
                 .map(|(_, value)| value.to_string());
 
             if let Some(u) = url {
-                match playlist::mainfn_single(&u).await {
+                match playlist::PlaylistFetcher::new(ctx.env.kv("KVCACHE")?).get(&u).await {
                     Ok(x) => Response::ok(x),
                     Err(e) => Response::error(format!("GET request failed. {e}"), 500),
                 }

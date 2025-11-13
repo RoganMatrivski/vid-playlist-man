@@ -11,13 +11,21 @@ impl KvCache {
         Self { kv }
     }
 
-    pub async fn get<T>(&self, key: impl AsRef<str>) -> Result<Option<T>>
+    pub async fn get_json<T>(&self, key: impl AsRef<str>) -> Result<Option<T>>
     where
         T: serde::de::DeserializeOwned,
     {
         self.kv
             .get(key.as_ref())
             .json()
+            .await
+            .map_err(|e: worker::KvError| anyhow::anyhow!("Failed to get kv: {e:?}"))
+    }
+
+    pub async fn get_text(&self, key: impl AsRef<str>) -> Result<Option<String>> {
+        self.kv
+            .get(key.as_ref())
+            .text()
             .await
             .map_err(|e: worker::KvError| anyhow::anyhow!("Failed to get kv: {e:?}"))
     }

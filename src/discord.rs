@@ -49,7 +49,7 @@ impl DiscordClient {
     {
         let keyname = format!("{PKG_NAME}_discord_{endpoint}");
         let kv_key = urlencoding::encode(&keyname);
-        if let Some(cached) = self.kv.get::<T>(&kv_key).await? {
+        if let Some(cached) = self.kv.get_json::<T>(&kv_key).await? {
             tracing::trace!("KV HIT for {endpoint}");
             return Ok(cached);
         };

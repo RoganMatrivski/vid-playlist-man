@@ -85,7 +85,8 @@ pub async fn playlist_single(req: Request, ctx: RouteContext<()>) -> Result<Resp
         .get(playlistname.as_str())
         .unwrap_or_else(|| panic!("Cannot get url for name {playlistname}"));
 
-    let playlist_urls = crate::playlist::mainfn_single(url)
+    let playlist_urls = crate::playlist::PlaylistFetcher::new(ctx.env.kv("KVCACHE")?)
+        .get(url)
         .await
         .unwrap_or_else(|_| panic!("Failed getting urls for {playlistname}"));
 

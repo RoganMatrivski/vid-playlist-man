@@ -48,53 +48,83 @@ fn get_baseurl(rawurl: &str) -> String {
     format!("{}://{}", parsed.scheme(), parsed.host_str().unwrap_or(""))
 }
 
-pub async fn mainfn_single(url: &str) -> Result<String> {
-    let client = crate::fetcher::Client::new("");
-    let vid_baseurl = get_baseurl(url) + "/video/";
+const PKG_NAME: &str = env!("CARGO_PKG_NAME");
 
-    let res = client.get_text(url).await?;
-    let doc = scraper::Html::parse_document(&res);
-    let pagelinks = get_page_links(&doc).into_iter().dedup().collect_vec();
-    let vidlinks = get_video_links(&doc, &vid_baseurl);
+pub struct PlaylistFetcher {
+    fetcher: crate::fetcher::Client,
+    kv: crate::kvcache::KvCache,
+}
 
-    let pagenum: Vec<u32> = pagelinks
-        .iter()
-        .map(|x| {
-            x[4..x.len() - 5]
-                .parse::<u32>()
-                .map_err(|e| anyhow::anyhow!("Failed to parse {x}: {e}"))
-        })
-        .try_collect()?;
+impl PlaylistFetcher {
+    pub fn new(kv: worker::KvStore) -> Self {
+        Self {
+            fetcher: crate::fetcher::Client::new(""),
+            kv: crate::kvcache::KvCache::new(kv),
+        }
+    }
+    async fn get_text_cached(&self, endpoint: &str) -> Result<String> {
+        let keyname = format!("{PKG_NAME}_discord_{endpoint}");
+        let kv_key = urlencoding::encode(&keyname);
+        if let Some(cached) = self.kv.get_text(&kv_key).await? {
+            tracing::trace!("KV HIT for {endpoint}");
+            return Ok(cached);
+        };
 
-    let maxpage = pagenum.into_iter().max().unwrap_or(1);
-    let sem = std::sync::Arc::new(async_lock::Semaphore::new(8));
+        tracing::trace!("KV MISS for {endpoint}");
 
-    let pagelinks = (2..(maxpage + 1))
-        .map(|x| {
-            let endpoint = format!("{url}/page{}.html", x);
-            let client = client.clone();
-            let vid_baseurl = vid_baseurl.clone();
-            let sem = sem.clone();
+        let res = self.fetcher.get_text(endpoint).await?;
 
-            async move {
-                let _permit = sem.acquire().await;
-                tracing::trace!("Fetching page {x}");
+        self.kv.set(&kv_key, &res, 60 * 30).await?;
 
-                let res = client.get_text(&endpoint).await?;
-                let doc = scraper::Html::parse_document(&res);
-                let links = get_video_links(&doc, &vid_baseurl);
+        Ok(res)
+    }
 
-                anyhow::Ok(links)
-            }
-        })
-        .collect_vec();
+    pub async fn get(&self, url: &str) -> Result<String> {
+        let vid_baseurl = get_baseurl(url) + "/video/";
 
-    let links = futures::future::try_join_all(pagelinks).await?;
+        let res = self.get_text_cached(url).await?;
+        let doc = scraper::Html::parse_document(&res);
+        let pagelinks = get_page_links(&doc).into_iter().dedup().collect_vec();
+        let vidlinks = get_video_links(&doc, &vid_baseurl);
 
-    let links = std::iter::once(vidlinks)
-        .chain(links)
-        .flatten()
-        .collect_vec();
+        let pagenum: Vec<u32> = pagelinks
+            .iter()
+            .map(|x| {
+                x[4..x.len() - 5]
+                    .parse::<u32>()
+                    .map_err(|e| anyhow::anyhow!("Failed to parse {x}: {e}"))
+            })
+            .try_collect()?;
 
-    Ok(links.join("\n"))
+        let maxpage = pagenum.into_iter().max().unwrap_or(1);
+        let sem = std::sync::Arc::new(async_lock::Semaphore::new(8));
+
+        let pagelinks = (2..(maxpage + 1))
+            .map(|x| {
+                let endpoint = format!("{url}/page{}.html", x);
+                let vid_baseurl = vid_baseurl.clone();
+                let sem = sem.clone();
+
+                async move {
+                    let _permit = sem.acquire().await;
+                    tracing::trace!("Fetching page {x}");
+
+                    let res = self.get_text_cached(&endpoint).await?;
+                    let doc = scraper::Html::parse_document(&res);
+                    let links = get_video_links(&doc, &vid_baseurl);
+
+                    anyhow::Ok(links)
+                }
+            })
+            .collect_vec();
+
+        let links = futures::future::try_join_all(pagelinks).await?;
+
+        let links = std::iter::once(vidlinks)
+            .chain(links)
+            .flatten()
+            .collect_vec();
+
+        Ok(links.join("\n"))
+    }
 }
