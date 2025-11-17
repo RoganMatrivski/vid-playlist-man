@@ -14,7 +14,7 @@ mod playlistviewer;
 fn get_envvar(env: &Env) -> worker::wasm_bindgen::JsValue {
     env.var("ENV")
         .unwrap_or(worker::Var::from(worker::wasm_bindgen::JsValue::from_str(
-            "",
+            "production",
         )))
         .as_ref()
         .clone()
@@ -22,10 +22,10 @@ fn get_envvar(env: &Env) -> worker::wasm_bindgen::JsValue {
 
 #[event(fetch)]
 pub async fn main(req: Request, env: Env, _ctx: worker::Context) -> Result<Response> {
-    tracing_worker::init_tracing(if env.var("ENV").unwrap().as_ref() == "development" {
-        tracing::Level::TRACE
-    } else {
+    tracing_worker::init_tracing(if get_envvar(&env) == "production" {
         tracing::Level::INFO
+    } else {
+        tracing::Level::TRACE
     });
 
     Router::new()
