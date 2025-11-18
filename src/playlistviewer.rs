@@ -53,6 +53,11 @@ pub async fn playlist_single(req: Request, ctx: RouteContext<()>) -> Result<Resp
         .unwrap_or("".into())
         .contains("text/html");
 
+    let reversed = {
+        let url = req.url()?;
+        url.query_pairs().any(|(k, _)| k == "reversed")
+    };
+
     let tomlstr = kv.get("config_playlist").text().await?.unwrap_or("".into());
     let tomlval = toml::from_str::<toml::Value>(&tomlstr).expect("Failed to parse toml");
 
@@ -90,9 +95,17 @@ pub async fn playlist_single(req: Request, ctx: RouteContext<()>) -> Result<Resp
         .await
         .unwrap_or_else(|_| panic!("Failed getting urls for {playlistname}"));
 
+    let mut playlist_urls: Vec<&str> = playlist_urls.lines().map(str::trim).collect();
+
+    if reversed {
+        playlist_urls.reverse();
+    }
+
+    let playlist_urls = playlist_urls.join("\n");
+
     if as_html {
         Response::from_html(
-            crate::htmlgen::gen_plaintext(playlist_urls.trim()).expect("Failed render template"),
+            crate::htmlgen::gen_plaintext(playlist_urls).expect("Failed render template"),
         )
     } else {
         Response::ok(playlist_urls)
