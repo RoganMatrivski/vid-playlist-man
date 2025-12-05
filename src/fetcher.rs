@@ -1,19 +1,21 @@
-use std::str::FromStr;
+use std::{rc::Rc, str::FromStr};
 
 use anyhow::{Result, anyhow};
 use backon::{ExponentialBuilder, Retryable};
-use gloo_net::http::{Headers, Request, Response};
 use http::{HeaderMap, HeaderName, HeaderValue, StatusCode};
+use worker::{Cache, Fetch, Headers, RequestInit};
 
 #[derive(Debug, Clone)]
 pub struct Client {
     base_url: String,
     headers: HeaderMap,
+
+    cache: Rc<Cache>,
 }
 
-pub struct GlooHeaders(pub Headers);
+pub struct RequestHeaders(pub Headers);
 
-impl From<&HeaderMap> for GlooHeaders {
+impl From<&HeaderMap> for RequestHeaders {
     fn from(map: &HeaderMap) -> Self {
         let headers = Headers::new();
 
@@ -23,20 +25,20 @@ impl From<&HeaderMap> for GlooHeaders {
             }
         }
 
-        GlooHeaders(headers)
+        RequestHeaders(headers)
     }
 }
 
-impl From<GlooHeaders> for Headers {
-    fn from(wrapper: GlooHeaders) -> Self {
+impl From<RequestHeaders> for Headers {
+    fn from(wrapper: RequestHeaders) -> Self {
         wrapper.0
     }
 }
 
-impl TryFrom<GlooHeaders> for HeaderMap {
+impl TryFrom<RequestHeaders> for HeaderMap {
     type Error = anyhow::Error;
 
-    fn try_from(wrapper: GlooHeaders) -> Result<Self> {
+    fn try_from(wrapper: RequestHeaders) -> Result<Self> {
         let value = wrapper.0;
 
         let mut headers = HeaderMap::new();
@@ -69,6 +71,8 @@ impl Client {
         Self {
             base_url: base_url.to_string(),
             headers: HeaderMap::new(),
+
+            cache: Rc::new(Cache::default()),
         }
     }
 
@@ -82,22 +86,32 @@ impl Client {
     pub async fn fetch(&self, endpoint: &str) -> Result<Vec<u8>> {
         let url = format!("{}{endpoint}", &self.base_url);
         let fetchcall = || async {
-            let res: Response = Request::get(&url)
-                .headers(GlooHeaders::from(&self.headers).into())
-                .send()
-                .await
-                .map_err(|e| anyhow!("Network error: {}", e))?;
+            let mut res = if let Some(cached) = self.cache.get(&url, false).await? {
+                tracing::trace!("Cache HIT for {url}");
+                cached
+            } else {
+                let req = worker::Request::new_with_init(&url, &RequestInit::new())?;
+                let mut res = Fetch::Request(req).send().await?;
+                let mut cloned_res = res.cloned()?;
 
-            if res.status() != StatusCode::OK {
+                cloned_res
+                    .headers_mut()
+                    .set("Cache-Control", "max-age=60")?; // cache for 60 seconds
+                self.cache.put(&url, cloned_res.cloned()?).await?;
+
+                res
+            };
+
+            if res.status_code() != StatusCode::OK {
                 let src = HttpError {
-                    status: res.status(),
-                    headers: GlooHeaders(res.headers()).try_into()?,
-                    message: format!("Request failed with status {}", res.status()),
+                    status: res.status_code(),
+                    headers: RequestHeaders(res.headers().clone()).try_into()?,
+                    message: format!("Request failed with status {}", res.status_code()),
                 };
                 return Err(anyhow::Error::new(src));
             }
 
-            Ok(res.binary().await?)
+            Ok(res.bytes().await?)
         };
 
         let res = fetchcall
