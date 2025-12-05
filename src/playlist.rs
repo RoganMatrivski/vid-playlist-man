@@ -52,31 +52,16 @@ const PKG_NAME: &str = env!("CARGO_PKG_NAME");
 
 pub struct PlaylistFetcher {
     fetcher: crate::fetcher::Client,
-    kv: crate::kvcache::KvCache,
 }
 
 impl PlaylistFetcher {
-    pub fn new(kv: worker::KvStore) -> Self {
+    pub fn new() -> Self {
         Self {
-            fetcher: crate::fetcher::Client::new(""),
-            kv: crate::kvcache::KvCache::new(kv),
+            fetcher: crate::fetcher::Client::new("").with_cache_ttl(60 * 5),
         }
     }
     async fn get_text_cached(&self, endpoint: &str) -> Result<String> {
-        let keyname = format!("{PKG_NAME}_discord_{endpoint}");
-        let kv_key = urlencoding::encode(&keyname);
-        if let Some(cached) = self.kv.get_text(&kv_key).await? {
-            tracing::trace!("KV HIT for {endpoint}");
-            return Ok(cached);
-        };
-
-        tracing::trace!("KV MISS for {endpoint}");
-
-        let res = self.fetcher.get_text(endpoint).await?;
-
-        self.kv.set(&kv_key, &res, 60 * 30).await?;
-
-        Ok(res)
+        self.fetcher.get_text(endpoint).await
     }
 
     pub async fn get(&self, url: &str) -> Result<String> {
@@ -101,7 +86,7 @@ impl PlaylistFetcher {
 
         let pagelinks = (2..(maxpage + 1))
             .map(|x| {
-                let endpoint = format!("{url}/page{}.html", x);
+                let endpoint = format!("{url}page{}.html", x);
                 let vid_baseurl = vid_baseurl.clone();
                 let sem = sem.clone();
 

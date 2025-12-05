@@ -11,6 +11,7 @@ pub struct Client {
     headers: HeaderMap,
 
     cache: Rc<Cache>,
+    cache_ttl: usize,
 }
 
 pub struct RequestHeaders(pub Headers);
@@ -73,13 +74,18 @@ impl Client {
             headers: HeaderMap::new(),
 
             cache: Rc::new(Cache::default()),
+            cache_ttl: 60,
         }
     }
 
-    pub fn with_headers(&self, headers: HeaderMap) -> Self {
+    pub fn with_headers(self, headers: HeaderMap) -> Self {
+        Self { headers, ..self }
+    }
+
+    pub fn with_cache_ttl(self, ttl: usize) -> Self {
         Self {
-            headers,
-            ..self.clone()
+            cache_ttl: ttl,
+            ..self
         }
     }
 
@@ -90,13 +96,18 @@ impl Client {
                 tracing::trace!("Cache HIT for {url}");
                 cached
             } else {
-                let req = worker::Request::new_with_init(&url, &RequestInit::new())?;
+                tracing::trace!("Cache MISS for {url}");
+                let req = worker::Request::new_with_init(
+                    &url,
+                    RequestInit::new().with_headers(self.headers.clone().into()),
+                )?;
                 let mut res = Fetch::Request(req).send().await?;
                 let mut cloned_res = res.cloned()?;
 
-                cloned_res
-                    .headers_mut()
-                    .set("Cache-Control", "max-age=60")?; // cache for 60 seconds
+                cloned_res.headers_mut().set(
+                    "Cache-Control",
+                    &format!("private=Set-Cookie,max-age={}", self.cache_ttl),
+                )?;
                 self.cache.put(&url, cloned_res.cloned()?).await?;
 
                 res

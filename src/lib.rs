@@ -7,6 +7,7 @@ mod fetcher;
 mod htmlgen;
 mod kvcache;
 mod playlist;
+mod workercache;
 
 mod kvmanager;
 mod playlistviewer;
@@ -28,7 +29,13 @@ pub async fn main(req: Request, env: Env, _ctx: worker::Context) -> Result<Respo
         tracing::Level::TRACE
     });
 
-    Router::new()
+    let cache = Cache::default();
+    if let Some(cached) = cache.get(&req, false).await? {
+        tracing::trace!("Cache HIT");
+        return Ok(cached);
+    }
+
+    let mut res = Router::new()
         .get("/", |_, _| Response::error("", 404))
         .get_async("/get", |req, ctx| async move {
             let url = req.url()?;
@@ -39,7 +46,7 @@ pub async fn main(req: Request, env: Env, _ctx: worker::Context) -> Result<Respo
                 .map(|(_, value)| value.to_string());
 
             if let Some(u) = url {
-                match playlist::PlaylistFetcher::new(ctx.env.kv("KVCACHE")?).get(&u).await {
+                match playlist::PlaylistFetcher::new().get(&u).await {
                     Ok(x) => Response::ok(x),
                     Err(e) => Response::error(format!("GET request failed. {e}"), 500),
                 }
@@ -63,8 +70,15 @@ pub async fn main(req: Request, env: Env, _ctx: worker::Context) -> Result<Respo
             Response::ok("")
         })
         // .get("*", |_, _| Response::error("Not found", 404))
-        .run(req, env)
-        .await
+        .run(req.clone().expect("Failed to clone request"), env)
+        .await?;
+
+    res.headers_mut().set("Cache-Control", "max-age=60")?;
+    if let Ok(res) = res.cloned() {
+        cache.put(&req, res).await?;
+    }
+
+    Ok(res)
 }
 
 #[event(scheduled)]
