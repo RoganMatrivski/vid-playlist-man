@@ -8,9 +8,9 @@ authors = ["Robin Mauritz <robinmauritzrm@gmail.com>"]
 crate-type = ["cdylib"]
 
 [dependencies]
-worker = { version = "0.6" }
-worker-macros = { version = "0.6" }
-http = "1.3"
+worker = { version = "0.7.0" }
+worker-macros = { version = "0.7.0" }
+http = "1.4.0"
 gloo-net = "0.6.0"
 serde = { version = "1.0.228", features = ["derive"] }
 anyhow = "1.0.100"
