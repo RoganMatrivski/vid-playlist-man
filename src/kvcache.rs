@@ -42,4 +42,19 @@ impl KvCache {
             .await
             .map_err(|e| anyhow::anyhow!("Failed to put kv: {e:?}"))
     }
+
+    pub async fn set_text(
+        &self,
+        key: impl AsRef<str>,
+        value: impl ToString,
+        ttl: u64,
+    ) -> Result<()> {
+        self.kv
+            .put(key.as_ref(), value.to_string())
+            .map_err(|e| anyhow::anyhow!("Failed to serialize KV value: {e:?}"))?
+            .expiration_ttl(ttl) // 1 week should be fine. No one change stuff that much, right?
+            .execute()
+            .await
+            .map_err(|e| anyhow::anyhow!("Failed to put kv: {e:?}"))
+    }
 }
