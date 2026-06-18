@@ -98,5 +98,148 @@ pub async fn kv_new_post(mut req: Request, ctx: RouteContext<()>) -> Result<Resp
 
     kv.put(kvname, kvvalue)?.execute().await?;
 
+    // Invalidate the cache for the viewable GET path
+    let mut cache_url = req.url()?;
+    cache_url.set_path(&format!("/kv/{}", kvname));
+    let cache = worker::Cache::default();
+    let _ = cache.delete(cache_url.as_str(), false).await;
+
     Response::ok("KV set")
+}
+
+pub async fn kv_edit_get(_req: Request, ctx: RouteContext<()>) -> Result<Response> {
+    let kvname = if let Some(n) = ctx.param("id") {
+        n
+    } else {
+        return Response::error("KV not found", 404);
+    };
+
+    let kv = ctx.env.kv("VID_PLAYLIST_MANAGER_KV")?;
+
+    let kvvalue = match kv.get(kvname).text().await? {
+        Some(s) => s,
+        None => return Response::error("KV not found", 404),
+    };
+
+    let edit_action = format!("/kv/{kvname}/edit");
+    let delete_action = format!("/kv/{kvname}/delete");
+
+    Response::from_html(
+        rsx! {
+        <!DOCTYPE html><html>
+        <head><title>edit kv</title></head>
+            <body>
+            <form action={edit_action} method="post">
+                <input id="keyname" name="keyname" value={kvname} readonly /><br/>
+                <textarea id="keyvalue" name="keyvalue" rows="6" cols="40" required>(kvvalue)</textarea><br/>
+                <button type="submit">Save</button>
+            </form>
+            <form action={delete_action} method="post">
+                <button type="submit">Delete</button>
+            </form>
+            </body>
+        </html>
+                }
+        .render()
+        .as_inner(),
+    )
+}
+
+pub async fn kv_edit_post(mut req: Request, ctx: RouteContext<()>) -> Result<Response> {
+    let kvname = if let Some(n) = ctx.param("id") {
+        n
+    } else {
+        return Response::error("KV not found", 404);
+    };
+
+    let body = req.text().await?;
+    let form: std::collections::HashMap<String, String> = form_urlencoded::parse(body.as_bytes())
+        .into_owned()
+        .collect();
+
+    let kvvalue = if let Some(kvvalue) = form.get("keyvalue") {
+        kvvalue
+    } else {
+        return Response::error("Missing 'keyvalue' field", 400);
+    };
+
+    let kv = ctx.env.kv("VID_PLAYLIST_MANAGER_KV")?;
+
+    // Ensure the key already exists before allowing an "edit" to create one.
+    if kv.get(kvname).text().await?.is_none() {
+        return Response::error("KV not found", 404);
+    }
+
+    kv.put(kvname, kvvalue)?.execute().await?;
+
+    // Invalidate the cache for the viewable GET path
+    let mut cache_url = req.url()?;
+    cache_url.set_path(&format!("/kv/{}", kvname));
+    let cache = worker::Cache::default();
+    let _ = cache.delete(cache_url.as_str(), false).await;
+
+    // Also invalidate the edit page itself, in case it's cached
+    let mut edit_url = req.url()?;
+    edit_url.set_path(&format!("/kv/{}/edit", kvname));
+    let _ = cache.delete(edit_url.as_str(), false).await;
+
+    Response::ok("KV updated")
+}
+
+pub async fn kv_delete_get(_req: Request, ctx: RouteContext<()>) -> Result<Response> {
+    let kvname = if let Some(n) = ctx.param("id") {
+        n
+    } else {
+        return Response::error("KV not found", 404);
+    };
+
+    let kv = ctx.env.kv("VID_PLAYLIST_MANAGER_KV")?;
+
+    if kv.get(kvname).text().await?.is_none() {
+        return Response::error("KV not found", 404);
+    }
+
+    let delete_action = format!("/kv/{kvname}/delete");
+    let prompt = format!("Delete key {kvname}? This cannot be undone.");
+
+    Response::from_html(
+        rsx! {
+        <!DOCTYPE html><html>
+        <head><title>delete kv</title></head>
+            <body>
+            <p>(prompt)</p>
+            <form action={delete_action} method="post">
+                <button type="submit">Delete</button>
+            </form>
+            </body>
+        </html>
+                }
+        .render()
+        .as_inner(),
+    )
+}
+
+pub async fn kv_delete_post(req: Request, ctx: RouteContext<()>) -> Result<Response> {
+    let kvname = if let Some(n) = ctx.param("id") {
+        n
+    } else {
+        return Response::error("KV not found", 404);
+    };
+
+    let kv = ctx.env.kv("VID_PLAYLIST_MANAGER_KV")?;
+
+    if kv.get(kvname).text().await?.is_none() {
+        return Response::error("KV not found", 404);
+    }
+
+    kv.delete(kvname).await?;
+
+    // Invalidate the cache for the viewable GET path
+    let mut cache_url = req.url()?;
+    cache_url.set_path(&format!("/kv/{}", kvname));
+
+    let cache = worker::Cache::default();
+    let _ = cache.delete(cache_url.as_str(), false).await;
+
+    Response::ok("KV deleted")
 }
