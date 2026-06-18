@@ -443,22 +443,22 @@ async fn ch_fetcher(
 
     let filtered_count = links.iter().filter(|x| EXCLUDER.is_match(x)).count();
 
+    let msgcount_str = msgcount.to_string();
+    let links_len_str = links.len().to_string();
+    let filtered_count_str = filtered_count.to_string();
+
     tracing::info!(
         "Fetched from {chname} ({srvname}): {} new message, {} new links, {} links excluded",
-        if msgcount == 0 {
-            "No"
-        } else {
-            &msgcount.to_string()
-        },
+        if msgcount == 0 { "No" } else { &msgcount_str },
         if links.is_empty() {
             "no"
         } else {
-            &links.len().to_string()
+            &links_len_str
         },
         if filtered_count == 0 {
             "no"
         } else {
-            &filtered_count.to_string()
+            &filtered_count_str
         }
     );
 
