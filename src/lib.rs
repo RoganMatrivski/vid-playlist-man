@@ -7,7 +7,6 @@ mod fetcher;
 mod htmlgen;
 mod kvcache;
 mod playlist;
-mod workercache;
 
 mod kvmanager;
 mod playlistviewer;
