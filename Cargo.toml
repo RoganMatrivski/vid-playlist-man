@@ -14,7 +14,7 @@ http = "1.4.0"
 gloo-net = "0.6.0"
 serde = { version = "1.0.228", features = ["derive"] }
 anyhow = "1.0.100"
-time = { version = "0.3.44", features = ["formatting", "wasm-bindgen"] }
+time = { version = "0.3.44", features = ["formatting", "macros", "wasm-bindgen"] }
 tracing = "0.1.41"
 tracing-worker = { git = "https://github.com/RoganMatrivski/tracing-worker.git" }
 wasmtimer = "0.4.3"

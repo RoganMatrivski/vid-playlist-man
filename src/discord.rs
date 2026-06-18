@@ -322,7 +322,7 @@ pub async fn mainfn(env: &worker::Env, sched_diff: i64) -> Result<()> {
     let prevtime = currtime.saturating_sub(time::Duration::minutes(sched_diff));
 
     {
-        let timefmt = time::format_description::parse("[hour]:[minute]:[second]")?;
+        let timefmt = time::format_description::parse_borrowed::<1>("[hour]:[minute]:[second]")?;
         let timestr = currtime.format(&timefmt)?;
         tracing::debug!("It is currently {timestr}");
     }
@@ -352,14 +352,14 @@ pub async fn mainfn(env: &worker::Env, sched_diff: i64) -> Result<()> {
     let urls = urls.into_iter().flatten().collect_vec();
 
     if urls.is_empty() {
-        let emfmt = time::format_description::parse("[hour]:[minute]:[second]")?;
+        let emfmt = time::macros::format_description!("[hour]:[minute]:[second]");
         let emtime = prevtime.format(&emfmt)?;
         tracing::info!("No new links since {emtime}. Skipping sending to KV.");
 
         return Ok(());
     }
 
-    let timefmt = time::format_description::parse("[year]-[month]")?;
+    let timefmt = time::format_description::parse_borrowed::<1>("[year]-[month]")?;
     let timestr = prevtime.format(&timefmt)?;
 
     let kvname = format!("{timestr}_discord_merged");
