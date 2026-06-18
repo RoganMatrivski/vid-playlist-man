@@ -63,7 +63,7 @@ pub async fn kv_new_get(_req: Request, _ctx: RouteContext<()>) -> Result<Respons
         <!DOCTYPE html><html>
         <head><title>new kv</title></head>
             <body>
-            <form action="/kvnew" method="post">
+            <form action="/kv/new" method="post">
                 <input id="keyname" name="keyname" /><br/>
                 <textarea id="keyvalue" name="keyvalue" rows="6" cols="40" required></textarea><br/>
                 <button type="submit">Submit</button>
