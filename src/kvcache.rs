@@ -6,6 +6,7 @@ pub struct KvCache {
     kv: KvStore,
 }
 
+#[allow(dead_code)]
 impl KvCache {
     pub fn new(kv: KvStore) -> Self {
         Self { kv }
