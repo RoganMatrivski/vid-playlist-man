@@ -38,7 +38,7 @@ pub async fn main(req: Request, env: Env, _ctx: worker::Context) -> Result<Respo
 
     let mut res = Router::new()
         .get("/", |_, _| Response::error("", 404))
-        .get_async("/get", |req, ctx| async move {
+        .get_async("/get", |req, _| async move {
             let url = req.url()?;
             let mut query_pairs = url.query_pairs();
 

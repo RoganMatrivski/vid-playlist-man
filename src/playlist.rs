@@ -48,8 +48,6 @@ fn get_baseurl(rawurl: &str) -> String {
     format!("{}://{}", parsed.scheme(), parsed.host_str().unwrap_or(""))
 }
 
-const PKG_NAME: &str = env!("CARGO_PKG_NAME");
-
 pub struct PlaylistFetcher {
     fetcher: crate::fetcher::Client,
 }
