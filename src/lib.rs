@@ -30,9 +30,11 @@ pub async fn main(req: Request, env: Env, _ctx: worker::Context) -> Result<Respo
     });
 
     let cache = Cache::default();
-    if let Some(cached) = cache.get(&req, false).await? {
-        tracing::trace!("Cache HIT");
-        return Ok(cached);
+    if req.method() == Method::Get {
+        if let Some(cached) = cache.get(&req, false).await? {
+            tracing::trace!("Cache HIT");
+            return Ok(cached);
+        }
     }
 
     let mut res = Router::new()
@@ -74,8 +76,10 @@ pub async fn main(req: Request, env: Env, _ctx: worker::Context) -> Result<Respo
         .await?;
 
     res.headers_mut().set("Cache-Control", "max-age=60")?;
-    if let Ok(res) = res.cloned() {
-        cache.put(&req, res).await?;
+    if req.method() == Method::Get {
+        if let Ok(res) = res.cloned() {
+            cache.put(&req, res).await?;
+        }
     }
 
     Ok(res)
