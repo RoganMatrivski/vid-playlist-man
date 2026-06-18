@@ -1,5 +1,11 @@
+use headers_accept::Accept;
 use hypertext::{Renderable, prelude::*, rsx};
 use itertools::Itertools;
+use mediatype::{
+    MediaType,
+    names::{HTML, TEXT},
+};
+use std::str::FromStr;
 use worker::{Request, Response, Result, RouteContext};
 
 pub async fn kv_list(req: Request, ctx: RouteContext<()>) -> Result<Response> {
@@ -7,11 +13,12 @@ pub async fn kv_list(req: Request, ctx: RouteContext<()>) -> Result<Response> {
     let list = kv.list().execute().await?;
     let names = list.keys.into_iter().map(|x| x.name).collect_vec();
 
-    let as_html = req
-        .headers()
-        .get("Accept")?
-        .unwrap_or("".into())
-        .contains("text/html");
+    let accept_header = req.headers().get("Accept")?.unwrap_or("text/plain".into());
+    let accept =
+        Accept::from_str(&accept_header).unwrap_or(Accept::from_str("text/plain").unwrap());
+
+    let html_media = MediaType::new(TEXT, HTML);
+    let as_html = accept.negotiate(&[html_media]).is_some();
 
     if !as_html {
         Response::ok(names.join("\n"))
@@ -35,11 +42,12 @@ pub async fn kv_get(req: Request, ctx: RouteContext<()>) -> Result<Response> {
         return Response::error("KV not found", 404);
     };
 
-    let as_html = req
-        .headers()
-        .get("Accept")?
-        .unwrap_or("".into())
-        .contains("text/html");
+    let accept_header = req.headers().get("Accept")?.unwrap_or("text/plain".into());
+    let accept =
+        Accept::from_str(&accept_header).unwrap_or(Accept::from_str("text/plain").unwrap());
+
+    let html_media = MediaType::new(TEXT, HTML);
+    let as_html = accept.negotiate(&[html_media]).is_some();
 
     let kv = ctx.env.kv("VID_PLAYLIST_MANAGER_KV")?;
 
