@@ -1,6 +1,6 @@
 use std::{rc::Rc, str::FromStr};
 
-use anyhow::{Result, anyhow};
+use anyhow::Result;
 use backon::{ExponentialBuilder, Retryable};
 use http::{HeaderMap, HeaderName, HeaderValue, StatusCode};
 use worker::{Cache, Fetch, Headers, RequestInit};
@@ -22,7 +22,11 @@ impl From<&HeaderMap> for RequestHeaders {
 
         for (key, value) in map.iter() {
             if let (name, Ok(value_str)) = (key, value.to_str()) {
-                headers.append(name.as_str(), value_str);
+                // If appending fails, log the error or ignore it.
+                // Since From is infallible, we don't return an error here.
+                if let Err(e) = headers.append(name.as_str(), value_str) {
+                    tracing::error!("Failed to append header {}: {}", name, e);
+                }
             }
         }
 
