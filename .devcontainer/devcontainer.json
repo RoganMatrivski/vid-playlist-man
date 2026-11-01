@@ -8,6 +8,8 @@
     // 	"dockerfile": "./Dockerfile",
     // 	"context": "."
     // },
+    "remoteUser": "vscode",
+    "updateRemoteUserUID": false,
     "remoteEnv": {
         // "PATH": "${containerEnv:PATH}:/usr/local/lib/wasi-sdk-17.0/bin"
     },
