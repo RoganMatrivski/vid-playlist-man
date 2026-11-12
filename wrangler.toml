@@ -31,6 +31,13 @@ binding = "KVCACHE"
 id = "e3e5bacc48a444318f62f3fa52e76016"
 preview_id = "e3e5bacc48a444318f62f3fa52e76016"
 
+[durable_objects]
+bindings = [{ name = "STRING_SET", class_name = "StringSet" }]
+
+[[migrations]]
+tag = "v1"
+new_sqlite_classes = ["StringSet"]
+
 [observability]
 [observability.logs]
 enabled = true

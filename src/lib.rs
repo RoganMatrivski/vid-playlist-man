@@ -3,6 +3,7 @@ use std::str::FromStr;
 use worker::*;
 
 mod discord;
+mod durableobjects;
 mod fetcher;
 mod htmlgen;
 mod kvcache;
@@ -73,6 +74,28 @@ pub async fn main(req: Request, env: Env, _ctx: worker::Context) -> Result<Respo
             tracing::error!("Testing error");
 
             Response::ok("")
+        })
+        .post_async("/test-do", |_req, ctx| async move {
+            let value = format!("test-do-{}", worker::js_sys::Math::random());
+            let size_before = durableobjects::size(&ctx.env).await?;
+            let added = durableobjects::add(&ctx.env, &value).await?;
+            if !added {
+                return Response::error("Test value already existed", 500);
+            }
+
+            let present = durableobjects::has(&ctx.env, &value).await?;
+            let size_after_add = durableobjects::size(&ctx.env).await?;
+            let deleted = durableobjects::delete(&ctx.env, &value).await?;
+            let absent = !durableobjects::has(&ctx.env, &value).await?;
+            let size_after_delete = durableobjects::size(&ctx.env).await?;
+
+            if present && deleted && absent {
+                Response::ok(format!(
+                    "StringSet RPC test passed (size: {size_before} -> {size_after_add} -> {size_after_delete})"
+                ))
+            } else {
+                Response::error("StringSet RPC test failed", 500)
+            }
         })
         // .get("*", |_, _| Response::error("Not found", 404))
         .run(req.clone().expect("Failed to clone request"), env)
