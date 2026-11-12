@@ -3,7 +3,7 @@ main = "build/index.js"
 compatibility_date = "2025-10-31"
 
 [build]
-command = "cargo install -q worker-build && worker-build --release"
+command = "cargo install -q worker-build@0.9.0 && worker-build --release"
 
 [placement]
 mode = "smart"
