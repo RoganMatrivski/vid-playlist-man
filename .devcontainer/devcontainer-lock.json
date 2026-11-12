@@ -1,0 +1,24 @@
+{
+  "features": {
+    "ghcr.io/devcontainers/features/node:1": {
+      "version": "1.7.1",
+      "resolved": "ghcr.io/devcontainers/features/node@sha256:8c0de46939b61958041700ee89e3493f3b2e4131a06dc46b4d9423427d06e5f6",
+      "integrity": "sha256:8c0de46939b61958041700ee89e3493f3b2e4131a06dc46b4d9423427d06e5f6"
+    },
+    "ghcr.io/devcontainers/features/rust:1": {
+      "version": "1.6.0",
+      "resolved": "ghcr.io/devcontainers/features/rust@sha256:846c949f52c9dea98d4f90a11957cbf152fb3f6e8a70ddd7cb83014a7d1d0c98",
+      "integrity": "sha256:846c949f52c9dea98d4f90a11957cbf152fb3f6e8a70ddd7cb83014a7d1d0c98"
+    },
+    "ghcr.io/meaningful-ooo/devcontainer-features/fish:2": {
+      "version": "2.0.0",
+      "resolved": "ghcr.io/meaningful-ooo/devcontainer-features/fish@sha256:c37c61d097aca9f0f4e35193eecd7c1f4f6f92225deaef7d98852de363a68a34",
+      "integrity": "sha256:c37c61d097aca9f0f4e35193eecd7c1f4f6f92225deaef7d98852de363a68a34"
+    },
+    "ghcr.io/r3dpoint/devcontainer-features/tailwindcss-standalone-cli:1": {
+      "version": "1.0.1",
+      "resolved": "ghcr.io/r3dpoint/devcontainer-features/tailwindcss-standalone-cli@sha256:b2b60737e993bf9b6c74838520111469a2f27e9d0ba648b8c4dc7d3ed38fdfe0",
+      "integrity": "sha256:b2b60737e993bf9b6c74838520111469a2f27e9d0ba648b8c4dc7d3ed38fdfe0"
+    }
+  }
+}
